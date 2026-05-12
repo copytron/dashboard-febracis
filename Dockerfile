@@ -18,10 +18,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Instala bun no runtime para rodar migrations
 RUN npm install -g bun
 
-# Copia node_modules do builder (mesmas versões exatas usadas no build)
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY package.json drizzle.config.ts ./
@@ -30,4 +28,5 @@ COPY scripts ./scripts
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "bun run db:migrate && node scripts/start-server.mjs"]
+# Retry migrations até o Postgres estar pronto (necessário em Swarm sem depends_on)
+CMD ["sh", "-c", "until bun run db:migrate; do echo '[startup] aguardando postgres...'; sleep 3; done && node scripts/start-server.mjs"]

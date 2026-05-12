@@ -1,19 +1,27 @@
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
+    image: dashboard-febracis:latest
     environment:
       DATABASE_URL: postgresql://febracis:${POSTGRES_PASSWORD}@postgres:5432/Postgres_Febracis
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+      BETTER_AUTH_URL: https://dashboard-febracis.fluq.com.br
       NODE_ENV: production
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
+    networks:
+      - network_swarm_public
+      - internal
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.dashboard-febracis.rule=Host(`dashboard-febracis.fluq.com.br`)"
+        - "traefik.http.routers.dashboard-febracis.entrypoints=websecure"
+        - "traefik.http.routers.dashboard-febracis.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.dashboard-febracis.middlewares=sslheader"
+        - "traefik.http.services.dashboard-febracis.loadbalancer.server.port=3000"
+        - "traefik.http.middlewares.sslheader.headers.customrequestheaders.X-Forwarded-Proto=https"
 
   postgres:
     image: postgres:16-alpine
@@ -23,12 +31,18 @@ services:
       POSTGRES_DB: Postgres_Febracis
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U febracis -d Postgres_Febracis"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
+    networks:
+      - internal
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+networks:
+  network_swarm_public:
+    external: true
+  internal:
+    driver: overlay
 
 volumes:
   postgres_data:
