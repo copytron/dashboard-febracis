@@ -3,37 +3,39 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Instala bun (usado como package manager)
 RUN npm install -g bun
 
-# Copia manifests e instala dependências
 COPY package.json bun.lockb bunfig.toml ./
 RUN bun install --frozen-lockfile
 
-# Copia o restante do código
 COPY . .
-
-# Build de produção (requer Node.js 20+ por causa do Vite 7)
 RUN bun run build
 
-# ─── Stage 2: Runtime ─────────────────────────────────────────────────────────
+# ─── Stage 2: Deps de produção ────────────────────────────────────────────────
+FROM node:20-alpine AS prod-deps
+
+WORKDIR /app
+
+RUN npm install -g bun
+
+COPY package.json bun.lockb bunfig.toml ./
+RUN bun install --frozen-lockfile --production && bun add -D drizzle-kit
+
+# ─── Stage 3: Runtime ─────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Instala bun no runtime para rodar migrations
-RUN npm install -g bun
-
-# Copia o output do build e os arquivos necessários para migrations
-COPY --from=builder /app/.output ./.output
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
-COPY --from=builder /app/src/db ./src/db
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=prod-deps /usr/local/lib/node_modules/bun /usr/local/lib/node_modules/bun
+COPY --from=prod-deps /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=builder /app/dist ./dist
+COPY package.json drizzle.config.ts ./
+COPY src/db ./src/db
+COPY scripts ./scripts
 
 EXPOSE 3000
 
-# Roda migrations e depois sobe o servidor
-CMD bun run db:migrate && node .output/server/index.mjs
+CMD ["sh", "-c", "bun run db:migrate && node scripts/start-server.mjs"]
