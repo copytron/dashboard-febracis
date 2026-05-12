@@ -1,6 +1,20 @@
-import { supabase } from "@/integrations/supabase/client";
+import { createServerFn } from "@tanstack/react-start";
+import { db } from "@/db/client";
+import { sql } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
+import {
+  workspaces,
+  dsSources,
+  dsColumns,
+  dsRows,
+  dataModels,
+  relationships,
+  relationshipColumns,
+} from "@/db/schema";
 
-export type Workspace = { id: string; name: string; owner_id: string; created_at: string };
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export type Workspace = { id: string; name: string; created_at: string };
 export type DsSource = { id: string; workspace_id: string; name: string; row_count: number; updated_at: string };
 export type DsColumn = { id: string; source_id: string; name: string; type: string; ordinal: number };
 export type DataModel = { id: string; workspace_id: string; name: string };
@@ -12,99 +26,421 @@ export type Relationship = {
 };
 export type RelColumn = { id: string; relationship_id: string; from_col: string; to_col: string; ord: number };
 
+export type ValidateResult = {
+  total_left: number; total_right: number;
+  matched_left: number; matched_right: number;
+  cardinality: Relationship["cardinality"];
+};
+
+// ─── Server functions ─────────────────────────────────────────────────────────
+
+export const listWorkspacesFn = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const rows = await db
+      .select({ id: workspaces.id, name: workspaces.name, created_at: workspaces.createdAt })
+      .from(workspaces)
+      .orderBy(sql`created_at DESC`);
+    return rows.map((r) => ({ ...r, created_at: r.created_at?.toISOString() ?? "" })) as Workspace[];
+  });
+
+export const createWorkspaceFn = createServerFn({ method: "POST" })
+  .inputValidator((d: { name: string }) => d)
+  .handler(async ({ data }) => {
+    const [ws] = await db
+      .insert(workspaces)
+      .values({ name: (data as any).name })
+      .returning({ id: workspaces.id, name: workspaces.name, createdAt: workspaces.createdAt });
+    return { id: ws.id, name: ws.name, created_at: ws.createdAt?.toISOString() ?? "" } as Workspace;
+  });
+
+export const listSourcesFn = createServerFn({ method: "POST" })
+  .inputValidator((d: { workspace_id: string }) => d)
+  .handler(async ({ data }) => {
+    const result = await db.execute(sql`
+      SELECT
+        s.id,
+        s.workspace_id,
+        s.name,
+        s.created_at,
+        COUNT(r.id)::int AS row_count
+      FROM ds_sources s
+      LEFT JOIN ds_rows r ON r.source_id = s.id
+      WHERE s.workspace_id = ${(data as any).workspace_id}
+      GROUP BY s.id, s.workspace_id, s.name, s.created_at
+      ORDER BY s.created_at DESC
+    `);
+    return (result as any[]).map((r: any) => ({
+      id: r.id,
+      workspace_id: r.workspace_id,
+      name: r.name,
+      row_count: Number(r.row_count ?? 0),
+      updated_at: r.created_at ?? "",
+    })) as DsSource[];
+  });
+
+export const listColumnsFn = createServerFn({ method: "POST" })
+  .inputValidator((d: { source_id: string }) => d)
+  .handler(async ({ data }) => {
+    const cols = await db
+      .select()
+      .from(dsColumns)
+      .where(eq(dsColumns.sourceId, (data as any).source_id))
+      .orderBy(dsColumns.createdAt);
+    return cols.map((c, i) => ({
+      id: c.id,
+      source_id: c.sourceId ?? "",
+      name: c.name ?? "",
+      type: c.type ?? "text",
+      ordinal: i,
+    })) as DsColumn[];
+  });
+
+export const listColumnsForSourcesFn = createServerFn({ method: "POST" })
+  .inputValidator((d: { source_ids: string[] }) => d)
+  .handler(async ({ data }) => {
+    if (!(data as any).source_ids?.length) return [] as DsColumn[];
+    const cols = await db
+      .select()
+      .from(dsColumns)
+      .where(inArray(dsColumns.sourceId, (data as any).source_ids))
+      .orderBy(dsColumns.createdAt);
+    return cols.map((c, i) => ({
+      id: c.id,
+      source_id: c.sourceId ?? "",
+      name: c.name ?? "",
+      type: c.type ?? "text",
+      ordinal: i,
+    })) as DsColumn[];
+  });
+
+export const importSheetFn = createServerFn({ method: "POST" })
+  .inputValidator((d: {
+    workspace_id: string;
+    name: string;
+    columns: { name: string; type: string }[];
+    rows: Record<string, unknown>[];
+  }) => d)
+  .handler(async ({ data }) => {
+    const d = data as any;
+    const [src] = await db
+      .insert(dsSources)
+      .values({ workspaceId: d.workspace_id, name: d.name, type: "sheet" })
+      .returning({ id: dsSources.id });
+
+    if (d.columns?.length) {
+      await db.insert(dsColumns).values(
+        d.columns.map((c: { name: string; type: string }) => ({ sourceId: src.id, name: c.name, type: c.type })),
+      );
+    }
+
+    if (d.rows?.length) {
+      const chunks: Record<string, unknown>[][] = [];
+      for (let i = 0; i < d.rows.length; i += 500) {
+        chunks.push(d.rows.slice(i, i + 500));
+      }
+      for (const chunk of chunks) {
+        await db.insert(dsRows).values(chunk.map((row: Record<string, unknown>) => ({ sourceId: src.id, data: row })));
+      }
+    }
+
+    return src.id;
+  });
+
+export const deleteSourceFn = createServerFn({ method: "POST" })
+  .inputValidator((d: { id: string }) => d)
+  .handler(async ({ data }) => {
+    await db.delete(dsSources).where(eq(dsSources.id, (data as any).id));
+  });
+
+export const previewRowsFn = createServerFn({ method: "POST" })
+  .inputValidator((d: { source_id: string; limit?: number }) => d)
+  .handler(async ({ data }) => {
+    const d = data as any;
+    const rows = await db
+      .select({ data: dsRows.data })
+      .from(dsRows)
+      .where(eq(dsRows.sourceId, d.source_id))
+      .limit(d.limit ?? 50);
+    return rows.map((r) => r.data as Record<string, any>);
+  });
+
+export const listModelsFn = createServerFn({ method: "POST" })
+  .inputValidator((d: { workspace_id: string }) => d)
+  .handler(async ({ data }) => {
+    const rows = await db
+      .select({ id: dataModels.id, workspace_id: dataModels.workspaceId, name: dataModels.name })
+      .from(dataModels)
+      .where(eq(dataModels.workspaceId, (data as any).workspace_id))
+      .orderBy(dataModels.createdAt);
+    return rows.map((r) => ({ id: r.id, workspace_id: r.workspace_id ?? "", name: r.name ?? "" })) as DataModel[];
+  });
+
+export const ensureDefaultModelFn = createServerFn({ method: "POST" })
+  .inputValidator((d: { workspace_id: string }) => d)
+  .handler(async ({ data }) => {
+    const existing = await db
+      .select({ id: dataModels.id, workspace_id: dataModels.workspaceId, name: dataModels.name })
+      .from(dataModels)
+      .where(eq(dataModels.workspaceId, (data as any).workspace_id))
+      .orderBy(dataModels.createdAt)
+      .limit(1);
+    if (existing.length) {
+      const m = existing[0];
+      return { id: m.id, workspace_id: m.workspace_id ?? "", name: m.name ?? "" } as DataModel;
+    }
+    const [created] = await db
+      .insert(dataModels)
+      .values({ workspaceId: (data as any).workspace_id, name: "Modelo padrão" })
+      .returning({ id: dataModels.id, workspace_id: dataModels.workspaceId, name: dataModels.name });
+    return { id: created.id, workspace_id: created.workspace_id ?? "", name: created.name ?? "" } as DataModel;
+  });
+
+export const listNodesFn = createServerFn({ method: "POST" })
+  .inputValidator((d: { model_id: string }) => d)
+  .handler(async ({ data }) => {
+    const result = await db.execute(sql`
+      SELECT id, model_id, source_id,
+             (position->>'x')::numeric AS x,
+             (position->>'y')::numeric AS y
+      FROM model_nodes
+      WHERE model_id = ${(data as any).model_id}
+    `);
+    return (result as any[]).map((r: any) => ({
+      id: r.id,
+      model_id: r.model_id,
+      source_id: r.source_id,
+      x: Number(r.x ?? 0),
+      y: Number(r.y ?? 0),
+    })) as ModelNode[];
+  });
+
+export const upsertNodeFn = createServerFn({ method: "POST" })
+  .inputValidator((d: { model_id: string; source_id: string; x: number; y: number }) => d)
+  .handler(async ({ data }) => {
+    const d = data as any;
+    await db.execute(sql`
+      INSERT INTO model_nodes (model_id, source_id, position)
+      VALUES (${d.model_id}, ${d.source_id}, ${JSON.stringify({ x: d.x, y: d.y })}::jsonb)
+      ON CONFLICT (model_id, source_id)
+      DO UPDATE SET position = ${JSON.stringify({ x: d.x, y: d.y })}::jsonb
+    `);
+  });
+
+export const removeNodeFn = createServerFn({ method: "POST" })
+  .inputValidator((d: { model_id: string; source_id: string }) => d)
+  .handler(async ({ data }) => {
+    const d = data as any;
+    await db.execute(sql`
+      DELETE FROM model_nodes
+      WHERE model_id = ${d.model_id} AND source_id = ${d.source_id}
+    `);
+  });
+
+export const listRelationshipsFn = createServerFn({ method: "POST" })
+  .inputValidator((d: { model_id: string }) => d)
+  .handler(async ({ data }) => {
+    const rels = await db.execute(sql`
+      SELECT id, model_id,
+             config->>'from_source' AS from_source,
+             config->>'to_source' AS to_source,
+             config->>'cardinality' AS cardinality,
+             config->>'direction' AS direction,
+             (config->>'active')::boolean AS active
+      FROM relationships
+      WHERE model_id = ${(data as any).model_id}
+    `);
+
+    const relRows = (rels as any[]);
+    const ids = relRows.map((r: any) => r.id);
+
+    let cols: RelColumn[] = [];
+    if (ids.length) {
+      const colResult = await db.execute(sql`
+        SELECT id, relationship_id,
+               config->>'from_col' AS from_col,
+               config->>'to_col' AS to_col,
+               (config->>'ord')::int AS ord
+        FROM relationship_columns
+        WHERE relationship_id = ANY(${ids})
+        ORDER BY (config->>'ord')::int
+      `);
+      cols = (colResult as any[]).map((c: any) => ({
+        id: c.id,
+        relationship_id: c.relationship_id,
+        from_col: c.from_col ?? "",
+        to_col: c.to_col ?? "",
+        ord: Number(c.ord ?? 0),
+      }));
+    }
+
+    return {
+      rels: relRows.map((r: any) => ({
+        id: r.id,
+        model_id: r.model_id,
+        from_source: r.from_source ?? "",
+        to_source: r.to_source ?? "",
+        cardinality: (r.cardinality ?? "one_many") as Relationship["cardinality"],
+        direction: (r.direction ?? "single") as Relationship["direction"],
+        active: r.active ?? true,
+      })) as Relationship[],
+      cols,
+    };
+  });
+
+export const createRelationshipFn = createServerFn({ method: "POST" })
+  .inputValidator((d: {
+    model_id: string; from_source: string; to_source: string;
+    cardinality: Relationship["cardinality"]; direction: Relationship["direction"];
+    pairs: { from_col: string; to_col: string }[];
+  }) => d)
+  .handler(async ({ data }) => {
+    const d = data as any;
+    const [rel] = await db
+      .insert(relationships)
+      .values({
+        modelId: d.model_id,
+        config: {
+          from_source: d.from_source,
+          to_source: d.to_source,
+          cardinality: d.cardinality,
+          direction: d.direction,
+          active: true,
+        },
+      })
+      .returning({ id: relationships.id });
+
+    if (d.pairs?.length) {
+      await db.insert(relationshipColumns).values(
+        d.pairs.map((p: { from_col: string; to_col: string }, i: number) => ({
+          relationshipId: rel.id,
+          config: { from_col: p.from_col, to_col: p.to_col, ord: i },
+        })),
+      );
+    }
+
+    return {
+      id: rel.id,
+      model_id: d.model_id,
+      from_source: d.from_source,
+      to_source: d.to_source,
+      cardinality: d.cardinality,
+      direction: d.direction,
+      active: true,
+    } as Relationship;
+  });
+
+export const deleteRelationshipFn = createServerFn({ method: "POST" })
+  .inputValidator((d: { id: string }) => d)
+  .handler(async ({ data }) => {
+    await db.delete(relationships).where(eq(relationships.id, (data as any).id));
+  });
+
+export const toggleRelationshipFn = createServerFn({ method: "POST" })
+  .inputValidator((d: { id: string; active: boolean }) => d)
+  .handler(async ({ data }) => {
+    const d = data as any;
+    await db.execute(sql`
+      UPDATE relationships
+      SET config = jsonb_set(config, '{active}', ${d.active}::text::jsonb)
+      WHERE id = ${d.id}
+    `);
+  });
+
+export const validateRelationshipFn = createServerFn({ method: "POST" })
+  .inputValidator((d: { from_source: string; to_source: string; pairs: { from_col: string; to_col: string }[] }) => d)
+  .handler(async ({ data }) => {
+    const d = data as any;
+    const pair = d.pairs?.[0];
+    if (!pair) throw new Error("No column pairs provided");
+
+    const leftResult = await db.execute(
+      sql.raw(`SELECT COUNT(DISTINCT "${pair.from_col}") AS cnt FROM "${d.from_source}"`),
+    );
+    const rightResult = await db.execute(
+      sql.raw(`SELECT COUNT(DISTINCT "${pair.to_col}") AS cnt FROM "${d.to_source}"`),
+    );
+    const totalLeft = await db.execute(sql.raw(`SELECT COUNT(*) AS cnt FROM "${d.from_source}"`));
+    const totalRight = await db.execute(sql.raw(`SELECT COUNT(*) AS cnt FROM "${d.to_source}"`));
+
+    const distinctLeft = Number(((leftResult as any[])[0])?.cnt ?? 0);
+    const distinctRight = Number(((rightResult as any[])[0])?.cnt ?? 0);
+    const totLeft = Number(((totalLeft as any[])[0])?.cnt ?? 0);
+    const totRight = Number(((totalRight as any[])[0])?.cnt ?? 0);
+
+    const isOneLeft = distinctLeft === totLeft;
+    const isOneRight = distinctRight === totRight;
+
+    let cardinality: Relationship["cardinality"];
+    if (isOneLeft && isOneRight) cardinality = "one_one";
+    else if (isOneLeft) cardinality = "one_many";
+    else if (isOneRight) cardinality = "many_one";
+    else cardinality = "many_many";
+
+    return {
+      total_left: totLeft,
+      total_right: totRight,
+      matched_left: distinctLeft,
+      matched_right: distinctRight,
+      cardinality,
+    } as ValidateResult;
+  });
+
+// ─── Client-side wrapper functions (kept for backward compat with consumers) ──
+
 export async function listWorkspaces() {
-  const { data, error } = await supabase.from("workspaces").select("*").order("created_at", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as Workspace[];
+  return listWorkspacesFn();
 }
 
 export async function createWorkspace(name: string) {
-  const { data: u } = await supabase.auth.getUser();
-  if (!u.user) throw new Error("not authenticated");
-  const { data, error } = await supabase.from("workspaces").insert({ name, owner_id: u.user.id }).select("*").single();
-  if (error) throw error;
-  return data as Workspace;
+  return createWorkspaceFn({ data: { name } });
 }
 
 export async function listSources(workspace_id: string) {
-  const { data, error } = await supabase.from("ds_sources").select("*").eq("workspace_id", workspace_id).order("created_at", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as DsSource[];
+  return listSourcesFn({ data: { workspace_id } });
 }
 
 export async function listColumns(source_id: string) {
-  const { data, error } = await supabase.from("ds_columns").select("*").eq("source_id", source_id).order("ordinal");
-  if (error) throw error;
-  return (data ?? []) as DsColumn[];
+  return listColumnsFn({ data: { source_id } });
 }
 
 export async function listColumnsForSources(source_ids: string[]) {
-  if (!source_ids.length) return [] as DsColumn[];
-  const { data, error } = await supabase.from("ds_columns").select("*").in("source_id", source_ids).order("ordinal");
-  if (error) throw error;
-  return (data ?? []) as DsColumn[];
+  return listColumnsForSourcesFn({ data: { source_ids } });
 }
 
 export async function importSheet(p: { workspace_id: string; name: string; columns: { name: string; type: string }[]; rows: Record<string, unknown>[] }) {
-  const { data, error } = await supabase.rpc("import_sheet", {
-    p_workspace_id: p.workspace_id, p_name: p.name, p_columns: p.columns as any, p_rows: p.rows as any,
-  });
-  if (error) throw error;
-  return data as string;
+  return importSheetFn({ data: p });
 }
 
 export async function deleteSource(id: string) {
-  const { error } = await supabase.from("ds_sources").delete().eq("id", id);
-  if (error) throw error;
+  return deleteSourceFn({ data: { id } });
 }
 
 export async function previewRows(source_id: string, limit = 50) {
-  const { data, error } = await supabase.from("ds_rows").select("data").eq("source_id", source_id).limit(limit);
-  if (error) throw error;
-  return (data ?? []).map((r: any) => r.data as Record<string, unknown>);
+  return previewRowsFn({ data: { source_id, limit } });
 }
 
 export async function listModels(workspace_id: string) {
-  const { data, error } = await supabase.from("data_models").select("*").eq("workspace_id", workspace_id).order("created_at");
-  if (error) throw error;
-  return (data ?? []) as DataModel[];
+  return listModelsFn({ data: { workspace_id } });
 }
 
 export async function ensureDefaultModel(workspace_id: string) {
-  const existing = await listModels(workspace_id);
-  if (existing.length) return existing[0];
-  const { data, error } = await supabase.from("data_models").insert({ workspace_id, name: "Modelo padrão" }).select("*").single();
-  if (error) throw error;
-  return data as DataModel;
+  return ensureDefaultModelFn({ data: { workspace_id } });
 }
 
 export async function listNodes(model_id: string) {
-  const { data, error } = await supabase.from("model_nodes").select("*").eq("model_id", model_id);
-  if (error) throw error;
-  return (data ?? []) as ModelNode[];
+  return listNodesFn({ data: { model_id } });
 }
 
 export async function upsertNode(n: { model_id: string; source_id: string; x: number; y: number }) {
-  const { error } = await supabase.from("model_nodes").upsert(n, { onConflict: "model_id,source_id" });
-  if (error) throw error;
+  return upsertNodeFn({ data: n });
 }
 
 export async function removeNode(model_id: string, source_id: string) {
-  const { error } = await supabase.from("model_nodes").delete().eq("model_id", model_id).eq("source_id", source_id);
-  if (error) throw error;
+  return removeNodeFn({ data: { model_id, source_id } });
 }
 
 export async function listRelationships(model_id: string) {
-  const { data: rels, error } = await supabase.from("relationships").select("*").eq("model_id", model_id);
-  if (error) throw error;
-  const ids = (rels ?? []).map((r: any) => r.id);
-  let cols: RelColumn[] = [];
-  if (ids.length) {
-    const { data: c, error: e2 } = await supabase.from("relationship_columns").select("*").in("relationship_id", ids).order("ord");
-    if (e2) throw e2;
-    cols = (c ?? []) as RelColumn[];
-  }
-  return { rels: (rels ?? []) as Relationship[], cols };
+  return listRelationshipsFn({ data: { model_id } });
 }
 
 export async function createRelationship(args: {
@@ -112,37 +448,17 @@ export async function createRelationship(args: {
   cardinality: Relationship["cardinality"]; direction: Relationship["direction"];
   pairs: { from_col: string; to_col: string }[];
 }) {
-  const { data: rel, error } = await supabase.from("relationships").insert({
-    model_id: args.model_id, from_source: args.from_source, to_source: args.to_source,
-    cardinality: args.cardinality, direction: args.direction, active: true,
-  }).select("*").single();
-  if (error) throw error;
-  const inserts = args.pairs.map((p, i) => ({ relationship_id: rel.id, from_col: p.from_col, to_col: p.to_col, ord: i }));
-  const { error: e2 } = await supabase.from("relationship_columns").insert(inserts);
-  if (e2) throw e2;
-  return rel as Relationship;
+  return createRelationshipFn({ data: args });
 }
 
 export async function deleteRelationship(id: string) {
-  const { error } = await supabase.from("relationships").delete().eq("id", id);
-  if (error) throw error;
+  return deleteRelationshipFn({ data: { id } });
 }
 
 export async function toggleRelationship(id: string, active: boolean) {
-  const { error } = await supabase.from("relationships").update({ active }).eq("id", id);
-  if (error) throw error;
+  return toggleRelationshipFn({ data: { id, active } });
 }
 
-export type ValidateResult = {
-  total_left: number; total_right: number;
-  matched_left: number; matched_right: number;
-  cardinality: Relationship["cardinality"];
-};
-
 export async function validateRelationship(args: { from_source: string; to_source: string; pairs: { from_col: string; to_col: string }[] }) {
-  const { data, error } = await supabase.rpc("validate_relationship", {
-    p_from_source: args.from_source, p_to_source: args.to_source, p_pairs: args.pairs as any,
-  });
-  if (error) throw error;
-  return data as ValidateResult;
+  return validateRelationshipFn({ data: args });
 }

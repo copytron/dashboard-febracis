@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { createServerFn } from "@tanstack/react-start";
+import { db } from "@/db/client";
+import { sql as drizzleSql } from "drizzle-orm";
 import { Card } from "@/components/dashboard/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,6 +51,20 @@ const AGGS: { v: BringKind; label: string; needsCol: boolean; needsOrder?: boole
   { v: "list_distinct", label: "Lista de valores únicos", needsCol: true },
 ];
 
+const fetchQueryBuilderMeta = createServerFn({ method: "GET" }).handler(async () => {
+  const result = await db.execute(drizzleSql`SELECT query_builder_meta() AS meta`);
+  return (result[0] as any)?.meta as Meta;
+});
+
+const runQueryBuilder = createServerFn({ method: "POST" })
+  .inputValidator((query: any) => query as Query)
+  .handler(async ({ data }) => {
+    const result = await db.execute(
+      drizzleSql`SELECT query_builder(${JSON.stringify(data)}::jsonb) AS result`
+    );
+    return (result[0] as any)?.result as { rows: any[]; total: number };
+  });
+
 const SAVED_KEY = "explorer_views_v1";
 
 export default function ExplorerView({ initialBase }: { initialBase?: string }) {
@@ -72,11 +88,9 @@ export default function ExplorerView({ initialBase }: { initialBase?: string }) 
   });
 
   useEffect(() => {
-    (async () => {
-      const { data, error } = await (supabase as any).rpc("query_builder_meta");
-      if (error) { setMetaErr(error.message); return; }
-      setMeta(data as Meta);
-    })();
+    fetchQueryBuilderMeta()
+      .then((data) => setMeta(data))
+      .catch((e: any) => setMetaErr(e?.message ?? "Erro ao carregar metadados"));
   }, []);
 
   useEffect(() => { if (initialBase) setQuery((q) => ({ ...q, base: initialBase, joins: [], filters: [] })); }, [initialBase]);
@@ -86,8 +100,7 @@ export default function ExplorerView({ initialBase }: { initialBase?: string }) 
   async function run() {
     setRunning(true); setRunErr(null);
     try {
-      const { data, error } = await (supabase as any).rpc("query_builder", { p_query: query });
-      if (error) throw error;
+      const data = await runQueryBuilder({ data: query });
       setRows((data?.rows as any[]) ?? []);
       setTotal(data?.total ?? null);
     } catch (e: any) {

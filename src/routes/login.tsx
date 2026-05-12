@@ -1,6 +1,6 @@
-import { createFileRoute, useNavigate, redirect } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { signIn, useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,23 +13,22 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const navigate = useNavigate();
+  const { data: session, isPending } = useSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate({ to: "/" });
-    });
-  }, [navigate]);
+    if (!isPending && session) navigate({ to: "/" });
+  }, [session, isPending, navigate]);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await signIn.email({ email, password });
     setLoading(false);
     if (error) {
-      toast.error(error.message);
+      toast.error(error.message ?? "Credenciais inválidas.");
       return;
     }
     toast.success("Bem-vindo!");

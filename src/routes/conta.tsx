@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { authClient } from "@/lib/auth-client";
 import { useAuth } from "@/lib/auth-context";
 import { PageHeader, Card } from "@/components/dashboard/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ export const Route = createFileRoute("/conta")({
 
 function ContaPage() {
   const { user, signOut } = useAuth();
+  const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
@@ -25,10 +26,15 @@ function ContaPage() {
     if (password.length < 6) return toast.error("Senha precisa ter ao menos 6 caracteres.");
     if (password !== confirm) return toast.error("As senhas não conferem.");
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password });
+    const { error } = await authClient.changePassword({
+      currentPassword,
+      newPassword: password,
+      revokeOtherSessions: false,
+    });
     setLoading(false);
-    if (error) return toast.error(error.message);
+    if (error) return toast.error(error.message ?? "Erro ao alterar senha.");
     toast.success("Senha alterada com sucesso.");
+    setCurrentPassword("");
     setPassword("");
     setConfirm("");
   };
@@ -39,6 +45,17 @@ function ContaPage() {
 
       <Card title="Alterar senha" className="mb-6 max-w-md">
         <form onSubmit={onChangePassword} className="space-y-3">
+          <div>
+            <Label className="text-xs">Senha atual</Label>
+            <Input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              className="mt-1"
+              autoComplete="current-password"
+              required
+            />
+          </div>
           <div>
             <Label className="text-xs">Nova senha</Label>
             <Input

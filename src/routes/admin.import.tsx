@@ -6,8 +6,7 @@ import { PageHeader, Card } from "@/components/dashboard/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/supabase/client";
-import { importSheet, previewSheet } from "@/server/import.functions";
+import { importSheet, previewSheet, getImportHistory } from "@/server/import.functions";
 import { toast } from "sonner";
 import { Download, Upload, RefreshCw } from "lucide-react";
 
@@ -41,16 +40,10 @@ function ImportPage() {
     onError: (e: any) => toast.error(e?.message ?? "Erro na importação"),
   });
 
+  const historyFn = useServerFn(getImportHistory);
   const history = useQuery({
     queryKey: ["import-history"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("planilha_imports")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(20);
-      return data ?? [];
-    },
+    queryFn: () => historyFn({ data: undefined }),
   });
 
   return (

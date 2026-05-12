@@ -1,0 +1,8 @@
+node_modules
+.output
+.git
+*.csv
+*.md
+.env
+.env.*
+!.env.example

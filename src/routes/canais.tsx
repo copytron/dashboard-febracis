@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { useFilters, applyVendasFilters } from "@/lib/filters";
+import { createServerFn } from "@tanstack/react-start";
+import { db } from "@/db/client";
+import { sql, SQL } from "drizzle-orm";
+import { useFilters } from "@/lib/filters";
 import { PageHeader, Card } from "@/components/dashboard/PageHeader";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { GlobalFilters } from "@/components/dashboard/GlobalFilters";
@@ -22,6 +24,77 @@ export const Route = createFileRoute("/canais")({
 
 const CHANNELS = ["Todos", ...CANAIS_LIST];
 
+type FiltersInput = {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  turmas?: string[];
+  estados?: string[];
+  canais?: string[];
+};
+
+type BreakdownRow = {
+  canal: string;
+  vendas: number;
+  receita: number;
+  ticket: number;
+};
+
+type DetailRow = {
+  canal: string;
+  valor_convertido: number;
+  utm_campanha: string | null;
+  utm_conteudo: string | null;
+  data_matricula: string | null;
+};
+
+const getCanaisBreakdown = createServerFn({ method: "GET" })
+  .inputValidator((input: FiltersInput) => input)
+  .handler(async ({ data: input }) => {
+    const conditions: SQL[] = [];
+    if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
+    if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
+    if (input.turmas?.length) conditions.push(sql`turma = ANY(${input.turmas})`);
+    if (input.estados?.length) conditions.push(sql`estado = ANY(${input.estados})`);
+    // Note: canais filter is intentionally excluded from breakdown (shows all channels)
+    const where = conditions.length > 0
+      ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+      : sql``;
+    const result = await db.execute(
+      sql`
+        SELECT
+          canal,
+          COUNT(*)::int AS vendas,
+          SUM(valor_convertido) AS receita,
+          CASE WHEN COUNT(*) > 0 THEN SUM(valor_convertido) / COUNT(*) ELSE 0 END AS ticket
+        FROM vendas_atribuidas
+        ${where}
+        GROUP BY canal
+        ORDER BY receita DESC
+      `
+    );
+    return result as unknown as BreakdownRow[];
+  });
+
+type DetailInput = FiltersInput & { canal?: string };
+
+const getCanaisDetail = createServerFn({ method: "GET" })
+  .inputValidator((input: DetailInput) => input)
+  .handler(async ({ data: input }) => {
+    const conditions: SQL[] = [];
+    if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
+    if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
+    if (input.turmas?.length) conditions.push(sql`turma = ANY(${input.turmas})`);
+    if (input.estados?.length) conditions.push(sql`estado = ANY(${input.estados})`);
+    if (input.canal && input.canal !== "Todos") conditions.push(sql`canal = ${input.canal}`);
+    const where = conditions.length > 0
+      ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+      : sql``;
+    const result = await db.execute(
+      sql`SELECT canal, valor_convertido, utm_campanha, utm_conteudo, data_matricula FROM vendas_atribuidas ${where} LIMIT 10000`
+    );
+    return result as unknown as DetailRow[];
+  });
+
 function Canais() {
   const { filters } = useFilters();
   const [canal, setCanal] = useState<string>("Todos");
@@ -29,31 +102,30 @@ function Canais() {
   // Breakdown agregado server-side (todas as 7 categorias)
   const { data: breakdown, isLoading: loadingBreak } = useQuery({
     queryKey: ["canais-breakdown", filters],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_canais_breakdown", {
-        p_date_from: filters.dateFrom ?? undefined,
-        p_date_to: filters.dateTo ?? undefined,
-        p_turmas: filters.turmas.length ? filters.turmas : undefined,
-        p_estados: filters.estados.length ? filters.estados : undefined,
-      });
-      if (error) throw error;
-      return (data ?? []) as { canal: string; vendas: number; receita: number; ticket: number }[];
-    },
+    queryFn: () =>
+      getCanaisBreakdown({
+        data: {
+          dateFrom: filters.dateFrom,
+          dateTo: filters.dateTo,
+          turmas: filters.turmas,
+          estados: filters.estados,
+        },
+      }),
   });
 
   // Linhas detalhadas (campanhas, conteúdos, tendência) — só do canal selecionado
   const { data: rows, isLoading } = useQuery({
     queryKey: ["canais-detail", canal, filters],
-    queryFn: async () => {
-      let q = supabase
-        .from("vendas_atribuidas")
-        .select("canal, valor_convertido, utm_campanha, utm_conteudo, data_matricula")
-        .limit(10000);
-      if (canal !== "Todos") q = q.eq("canal", canal) as any;
-      const { data, error } = await applyVendasFilters(q as any, { ...filters, canais: [] });
-      if (error) throw error;
-      return (data ?? []) as any[];
-    },
+    queryFn: () =>
+      getCanaisDetail({
+        data: {
+          dateFrom: filters.dateFrom,
+          dateTo: filters.dateTo,
+          turmas: filters.turmas,
+          estados: filters.estados,
+          canal,
+        },
+      }),
   });
 
   const data = rows ?? [];

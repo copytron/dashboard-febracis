@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useMemo, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { createServerFn } from "@tanstack/react-start";
+import { db } from "@/db/client";
+import { sql } from "drizzle-orm";
 import { PageHeader, Card } from "@/components/dashboard/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -9,6 +11,56 @@ import { Play, Download, Database, Key, Hash, Type, Calendar, FileText, ZoomIn, 
 import { useRef } from "react";
 import { fmtNum } from "@/lib/format";
 import ExplorerView from "@/components/explorer/ExplorerView";
+
+// ─── Server functions ─────────────────────────────────────────────────────────
+
+const execReadSql = createServerFn({ method: "POST" })
+  .inputValidator((d: { query: string }) => d)
+  .handler(async ({ data }) => {
+    const d = data as { query: string };
+    const trimmed = d.query.trim().toUpperCase();
+    if (!trimmed.startsWith("SELECT") && !trimmed.startsWith("WITH")) {
+      throw new Error("Apenas consultas SELECT ou WITH são permitidas.");
+    }
+    // Wrap with LIMIT 5000 to cap results
+    const limited = `WITH __q AS (\n${d.query}\n) SELECT * FROM __q LIMIT 5000`;
+    const result = await db.execute(sql.raw(limited));
+    return result as any;
+  });
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const queryBuilderMeta = createServerFn({ method: "POST" })
+  .inputValidator((d: { table: string }) => d)
+  .handler(async ({ data }) => {
+    const d = data as { table: string };
+    // Return column metadata for a given table/view
+    const result = await db.execute(sql`
+      SELECT column_name, data_type
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = ${d.table}
+      ORDER BY ordinal_position
+    `);
+    return result as any;
+  });
+
+const inspectTable = createServerFn({ method: "POST" })
+  .inputValidator((d: { table: string }) => d)
+  .handler(async ({ data }) => {
+    const d = data as { table: string };
+    // Validate table name to prevent injection (alphanumeric + underscore only)
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(d.table)) {
+      throw new Error("Nome de tabela inválido.");
+    }
+    const countResult = await db.execute(sql.raw(`SELECT COUNT(*) AS cnt FROM "${d.table}"`));
+    const rowsResult = await db.execute(sql.raw(`SELECT * FROM "${d.table}" LIMIT 10`));
+    return {
+      count: Number(((countResult as any[])[0] as any)?.cnt ?? 0),
+      rows: rowsResult as any as Record<string, any>[],
+    } as any;
+  });
+
+// ─── Route ────────────────────────────────────────────────────────────────────
 
 export const Route = createFileRoute("/modelo")({
   head: () => ({ meta: [{ title: "Modelo de Dados · Febracis MKT" }] }),
@@ -350,10 +402,12 @@ function TableInspector({ table, onOpenExplorer }: { table: Tbl; onOpenExplorer?
     setLoading(true); setRows(null); setCount(null);
     (async () => {
       try {
-        const { data, count: c } = await (supabase as any)
-          .from(table.name).select("*", { count: "exact" }).limit(10);
+        const result = await inspectTable({ data: { table: table.name } });
         if (cancel) return;
-        setRows(data ?? []); setCount(c ?? null);
+        setRows((result as any).rows);
+        setCount(result.count);
+      } catch {
+        if (!cancel) { setRows([]); setCount(null); }
       } finally { if (!cancel) setLoading(false); }
     })();
     return () => { cancel = true; };
@@ -387,7 +441,7 @@ function TableInspector({ table, onOpenExplorer }: { table: Tbl; onOpenExplorer?
 
 // ===== SQL EXPLORER =====
 function SqlExplorer() {
-  const [sql, setSql] = useState<string>(SNIPPETS[0].sql);
+  const [query, setQuery] = useState<string>(SNIPPETS[0].sql);
   const [rows, setRows] = useState<any[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -400,10 +454,9 @@ function SqlExplorer() {
   async function run() {
     setLoading(true); setError(null); setRows(null);
     try {
-      const { data, error } = await (supabase as any).rpc("exec_read_sql", { p_sql: sql });
-      if (error) throw error;
+      const data = await execReadSql({ data: { query } });
       setRows(Array.isArray(data) ? data : []);
-      const h = [sql, ...history.filter((s) => s !== sql)].slice(0, 20);
+      const h = [query, ...history.filter((s) => s !== query)].slice(0, 20);
       setHistory(h); localStorage.setItem("sql_history", JSON.stringify(h));
     } catch (e: any) {
       setError(e?.message || String(e));
@@ -429,7 +482,7 @@ function SqlExplorer() {
           <ul className="text-xs space-y-1">
             {SNIPPETS.map((s) => (
               <li key={s.label}>
-                <button onClick={() => setSql(s.sql)} className="text-left w-full hover:text-primary text-muted-foreground py-1">
+                <button onClick={() => setQuery(s.sql)} className="text-left w-full hover:text-primary text-muted-foreground py-1">
                   • {s.label}
                 </button>
               </li>
@@ -440,7 +493,7 @@ function SqlExplorer() {
           <ul className="text-xs space-y-1 max-h-72 overflow-auto">
             {TABLES.map((t) => (
               <li key={t.name}>
-                <button onClick={() => setSql((s) => s + " " + t.name)} className="text-left w-full hover:text-primary font-mono text-muted-foreground py-0.5">
+                <button onClick={() => setQuery((s) => s + " " + t.name)} className="text-left w-full hover:text-primary font-mono text-muted-foreground py-0.5">
                   {t.name}
                 </button>
               </li>
@@ -452,7 +505,7 @@ function SqlExplorer() {
             <ul className="text-xs space-y-1 max-h-48 overflow-auto">
               {history.map((h, i) => (
                 <li key={i}>
-                  <button onClick={() => setSql(h)} className="text-left w-full hover:text-primary text-muted-foreground py-0.5 truncate" title={h}>
+                  <button onClick={() => setQuery(h)} className="text-left w-full hover:text-primary text-muted-foreground py-0.5 truncate" title={h}>
                     {h.slice(0, 40)}…
                   </button>
                 </li>
@@ -463,7 +516,7 @@ function SqlExplorer() {
       </div>
       <div className="space-y-4">
         <Card title="Editor">
-          <Textarea value={sql} onChange={(e) => setSql(e.target.value)} rows={10} className="font-mono text-xs" />
+          <Textarea value={query} onChange={(e) => setQuery(e.target.value)} rows={10} className="font-mono text-xs" />
           <div className="flex items-center gap-2 mt-3">
             <Button onClick={run} disabled={loading} size="sm">
               <Play className="size-4 mr-1.5" /> {loading ? "Executando…" : "Executar (SELECT/WITH)"}

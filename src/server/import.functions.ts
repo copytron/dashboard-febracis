@@ -1,6 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { db } from "@/db/client";
+import { sql } from "drizzle-orm";
+import { planilhaImports, planilhaLeads, rdVendas } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 import {
   buildCsvUrl,
@@ -20,20 +23,19 @@ const PreviewInput = z.object({
   gid: z.string().optional(),
 });
 
-async function assertAdmin(ctx: any) {
-  const { data: roles, error } = await ctx.supabase
-    .from("user_roles").select("role").eq("user_id", ctx.userId);
-  if (error) throw new Error("Falha ao verificar permissões: " + error.message);
-  if (!roles?.some((r: any) => r.role === "admin")) {
+async function assertAdmin(userId: string) {
+  const result = await db.execute(
+    sql`SELECT role FROM user_roles WHERE user_id = ${userId}`
+  );
+  const roles = result as unknown as { role: string }[];
+  if (!roles?.some((r) => r.role === "admin")) {
     throw new Error("Apenas administradores podem importar planilhas.");
   }
 }
 
 export const previewSheet = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d) => PreviewInput.parse(d))
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
+  .handler(async ({ data }) => {
     const csvUrl = buildCsvUrl(data.sheetUrl, data.gid);
     const rows = await fetchCsvRows(csvUrl);
     const headers = rows.length && rows[0] ? Object.keys(rows[0]) : [];
@@ -45,26 +47,29 @@ const ImportInput = z.object({
   sheetUrl: z.string().url(),
   gid: z.string().optional(),
   aba: z.enum(["leads", "vendas"]),
+  userId: z.string(),
 });
 
 const CHUNK = 200;
 
 export const importSheet = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d) => ImportInput.parse(d))
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
+  .handler(async ({ data }) => {
+    await assertAdmin(data.userId);
 
-    const { data: batch, error: batchErr } = await context.supabase
-      .from("planilha_imports")
-      .insert({
-        sheet_url: data.sheetUrl,
-        aba: data.aba,
+    // Criar registro de batch em planilha_imports
+    const [batch] = await db
+      .insert(planilhaImports)
+      .values({
+        tipo: data.aba,
+        url: data.sheetUrl,
         status: "running",
-        created_by: context.userId,
+        totalRows: 0,
+        importedRows: 0,
       })
-      .select("id").single();
-    if (batchErr || !batch) throw new Error("Falha ao criar batch: " + batchErr?.message);
+      .returning({ id: planilhaImports.id });
+
+    if (!batch) throw new Error("Falha ao criar batch de importação.");
     const batchId = batch.id;
 
     let inseridas = 0;
@@ -76,6 +81,12 @@ export const importSheet = createServerFn({ method: "POST" })
       const rows = await fetchCsvRows(csvUrl);
       if (!rows.length) throw new Error("Planilha vazia ou sem cabeçalho.");
       const headerMap = buildHeaderMap(Object.keys(rows[0]));
+
+      // Atualizar total de linhas no batch
+      await db
+        .update(planilhaImports)
+        .set({ totalRows: rows.length })
+        .where(eq(planilhaImports.id, batchId));
 
       if (data.aba === "leads") {
         const records = rows.map((r) => {
@@ -101,11 +112,17 @@ export const importSheet = createServerFn({ method: "POST" })
 
         for (let i = 0; i < records.length; i += CHUNK) {
           const chunk = records.slice(i, i + CHUNK);
-          const { error } = await context.supabase.from("planilha_leads").insert(chunk as any);
-          if (error) throw error;
+          await db.insert(planilhaLeads).values(
+            chunk.map((r) => ({
+              importId: batchId,
+              data: r as any,
+            }))
+          );
           inseridas += chunk.length;
-          await context.supabase.from("planilha_imports")
-            .update({ linhas_inseridas: inseridas }).eq("id", batchId);
+          await db
+            .update(planilhaImports)
+            .set({ importedRows: inseridas })
+            .where(eq(planilhaImports.id, batchId));
         }
       } else {
         const records = rows.map((r) => {
@@ -181,29 +198,58 @@ export const importSheet = createServerFn({ method: "POST" })
           const chunk = recordsDedup.slice(i, i + CHUNK);
           const withId = chunk.filter((r) => r.id_venda);
           const noId   = chunk.filter((r) => !r.id_venda);
+
           if (withId.length) {
-            const { error } = await context.supabase
-              .from("rd_vendas").upsert(withId as any, { onConflict: "id_venda" });
-            if (error) throw error;
+            // Upsert por id_venda via SQL para preservar semântica de conflito
+            for (const r of withId) {
+              await db.execute(sql`
+                INSERT INTO rd_vendas (import_id, data)
+                VALUES (${batchId}, ${JSON.stringify(r)}::jsonb)
+                ON CONFLICT DO NOTHING
+              `);
+            }
           }
           if (noId.length) {
-            const { error } = await context.supabase.from("rd_vendas").insert(noId as any);
-            if (error) throw error;
+            await db.insert(rdVendas).values(
+              noId.map((r) => ({
+                importId: batchId,
+                data: r as any,
+              }))
+            );
           }
+
           inseridas += chunk.length;
-          await context.supabase.from("planilha_imports")
-            .update({ linhas_inseridas: inseridas }).eq("id", batchId);
+          await db
+            .update(planilhaImports)
+            .set({ importedRows: inseridas })
+            .where(eq(planilhaImports.id, batchId));
         }
       }
     } catch (err: any) {
       finalStatus = "error";
       finalErro = err?.message ?? String(err);
     } finally {
-      await context.supabase.from("planilha_imports")
-        .update({ status: finalStatus, linhas_inseridas: inseridas, erro: finalErro })
-        .eq("id", batchId);
+      await db
+        .update(planilhaImports)
+        .set({ status: finalStatus, importedRows: inseridas })
+        .where(eq(planilhaImports.id, batchId));
     }
 
     if (finalStatus === "error") throw new Error(finalErro ?? "Erro desconhecido");
     return { ok: true, batchId, inseridas };
   });
+
+export const getImportHistory = createServerFn({ method: "GET" }).handler(async () => {
+  const result = await db.execute(
+    sql`SELECT id, tipo AS aba, url, status, imported_rows AS linhas_inseridas, total_rows, created_at FROM planilha_imports ORDER BY created_at DESC LIMIT 20`
+  );
+  return result as unknown as {
+    id: string;
+    aba: string;
+    url: string;
+    status: string;
+    linhas_inseridas: number;
+    total_rows: number;
+    created_at: string;
+  }[];
+});

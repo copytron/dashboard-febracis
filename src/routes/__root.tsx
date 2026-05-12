@@ -3,13 +3,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { FiltersProvider } from "@/lib/filters";
-import { installServerFnAuth } from "@/integrations/supabase/server-fn-auth";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { Toaster } from "@/components/ui/sonner";
 
 import appCss from "../styles.css?url";
-
-installServerFnAuth();
 
 function NotFoundComponent() {
   return (
@@ -42,8 +39,6 @@ export const Route = createRootRoute({
       { name: "twitter:title", content: "Febracis MKT — Atribuição de Marketing" },
       { property: "og:description", content: "Dashboard de atribuição de marketing Febracis." },
       { name: "twitter:description", content: "Dashboard de atribuição de marketing Febracis." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5ba846b1-35fb-4b62-98d2-fd34ba6f74b9/id-preview-d8cb0759--ee5a0125-da50-4b33-b314-ae69e053cc0b.lovable.app-1777350151302.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5ba846b1-35fb-4b62-98d2-fd34ba6f74b9/id-preview-d8cb0759--ee5a0125-da50-4b33-b314-ae69e053cc0b.lovable.app-1777350151302.png" },
       { name: "twitter:card", content: "summary_large_image" },
       { property: "og:type", content: "website" },
     ],
@@ -85,19 +80,19 @@ function RootComponent() {
 }
 
 function AuthGate() {
-  const { session, loading } = useAuth();
+  const { user, loading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const isLogin = location.pathname === "/login";
 
   useEffect(() => {
-    if (!loading && !session && !isLogin) {
+    if (!loading && !user && !isLogin) {
       navigate({ to: "/login" });
     }
-  }, [loading, session, isLogin, navigate]);
+  }, [loading, user, isLogin, navigate]);
 
   if (isLogin) return <Outlet />;
-  if (loading || !session) {
+  if (loading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">
         Carregando...

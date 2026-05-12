@@ -16,7 +16,12 @@ dist-ssr
 .nitro
 *.local
 
-# Wrangler / Cloudflare
+# Secrets — nunca commitar
+.env
+.env.local
+.env.*.local
+
+# Wrangler / Cloudflare (legado — removido)
 .wrangler/
 .dev.vars
 

@@ -1,13 +1,110 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { createServerFn } from "@tanstack/react-start";
+import { db } from "@/db/client";
+import { sql } from "drizzle-orm";
+import { desc } from "drizzle-orm";
+import { dqFindings, metaPipeline } from "@/db/schema";
 import { PageHeader, Card } from "@/components/dashboard/PageHeader";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { Button } from "@/components/ui/button";
 import { fmtNum, SEVERITY_BADGE, MATCH_METHOD_LABEL } from "@/lib/format";
 import { RefreshCw, AlertTriangle, ShieldCheck, Database } from "lucide-react";
 import { toast } from "sonner";
+
+// ---------------------------------------------------------------------------
+// Server functions
+// ---------------------------------------------------------------------------
+
+const getPipelineStatus = createServerFn({ method: "GET" }).handler(async () => {
+  const rows = await db
+    .select()
+    .from(metaPipeline)
+    .orderBy(desc(metaPipeline.id))
+    .limit(1);
+  return (rows[0] ?? null) as any;
+});
+
+const getDqSummary = createServerFn({ method: "GET" }).handler(async () => {
+  const result = await db.execute(sql`
+    SELECT rule, severity, COUNT(*) as total
+    FROM dq_findings
+    GROUP BY rule, severity
+    ORDER BY severity, rule
+  `);
+  return result as unknown as { rule: string; severity: string; total: number }[];
+});
+
+const getDqFindings = createServerFn({ method: "GET" })
+  .inputValidator((d: { rule: string }) => d)
+  .handler(async ({ data }) => {
+    const result = await db.execute(sql`
+      SELECT id, entity, entity_id, severity, details, created_at
+      FROM dq_findings
+      WHERE rule = ${data.rule}
+      ORDER BY id DESC
+      LIMIT 200
+    `);
+    return result as unknown as {
+      id: number;
+      entity: string;
+      entity_id: string;
+      severity: string;
+      details: any;
+      created_at: string;
+    }[];
+  });
+
+const getMatchBreakdown = createServerFn({ method: "GET" }).handler(async () => {
+  const result = await db.execute(sql`
+    SELECT
+      match_method,
+      COUNT(*) as total,
+      SUM(CASE WHEN is_pre_sale THEN 1 ELSE 0 END) as pre_sale,
+      SUM(CASE WHEN NOT is_pre_sale THEN 1 ELSE 0 END) as posterior,
+      AVG(match_lag_days) as avg_lag
+    FROM bridge_lead_venda
+    GROUP BY match_method
+    ORDER BY total DESC
+  `);
+  return result as unknown as {
+    match_method: string;
+    total: number;
+    pre_sale: number;
+    posterior: number;
+    avg_lag: number;
+  }[];
+});
+
+const getAttributionBreakdown = createServerFn({ method: "GET" }).handler(async () => {
+  const result = await db.execute(sql`
+    SELECT
+      tipo_atribuicao,
+      COUNT(*) as total,
+      SUM(valor_convertido) as receita
+    FROM vendas_atribuidas
+    GROUP BY tipo_atribuicao
+    ORDER BY total DESC
+  `);
+  return result as unknown as {
+    tipo_atribuicao: string;
+    total: number;
+    receita: number;
+  }[];
+});
+
+const rebuildCore = createServerFn({ method: "POST" }).handler(async () => {
+  await db.insert(metaPipeline).values({
+    status: "pending",
+    startedAt: new Date(),
+  });
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// Route
+// ---------------------------------------------------------------------------
 
 export const Route = createFileRoute("/auditoria")({
   head: () => ({
@@ -35,75 +132,53 @@ function Auditoria() {
 
   const { data: status } = useQuery({
     queryKey: ["pipeline-status"],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("get_pipeline_status");
-      if (error) throw error;
-      return data as any;
-    },
+    queryFn: () => getPipelineStatus(),
   });
 
   const { data: dq } = useQuery({
     queryKey: ["dq-summary"],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("get_dq_summary");
-      if (error) throw error;
-      return (data ?? []) as { rule: string; severity: string; total: number }[];
-    },
+    queryFn: () => getDqSummary(),
   });
 
   const { data: matches } = useQuery({
     queryKey: ["match-breakdown"],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("get_match_breakdown");
-      if (error) throw error;
-      return (data ?? []) as { match_method: string; total: number; pre_sale: number; posterior: number; avg_lag: number }[];
-    },
+    queryFn: () => getMatchBreakdown(),
   });
 
   const { data: attr } = useQuery({
     queryKey: ["attr-breakdown"],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("get_attribution_breakdown");
-      if (error) throw error;
-      return (data ?? []) as { tipo_atribuicao: string; total: number; receita: number }[];
-    },
+    queryFn: () => getAttributionBreakdown(),
   });
 
   const { data: findings } = useQuery({
     queryKey: ["dq-findings", openRule],
     enabled: !!openRule,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("get_dq_findings", { p_rule: openRule, p_limit: 200 });
-      if (error) throw error;
-      return (data ?? []) as { id: number; entity: string; entity_id: string; severity: string; details: any; created_at: string }[];
-    },
+    queryFn: () => getDqFindings({ data: { rule: openRule! } }),
   });
 
   const rebuild = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await (supabase as any).rpc("rebuild_core");
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (d) => {
-      toast.success(`Rebuild concluído: ${d?.vendas ?? 0} vendas, ${d?.bridges ?? 0} matches, ${d?.dq_findings ?? 0} achados.`);
+    mutationFn: () => rebuildCore(),
+    onSuccess: () => {
+      toast.success("Rebuild enfileirado com sucesso. O pipeline será processado em breve.");
       qc.invalidateQueries();
     },
     onError: (e: any) => toast.error(e.message ?? "Erro no rebuild"),
   });
 
-  const totals = status?.totals ?? {};
+  const totals = (status as any)?.totals ?? {};
   const errors = (dq ?? []).filter((d) => d.severity === "error").reduce((s, d) => s + Number(d.total), 0);
   const warns = (dq ?? []).filter((d) => d.severity === "warn").reduce((s, d) => s + Number(d.total), 0);
   const infos = (dq ?? []).filter((d) => d.severity === "info").reduce((s, d) => s + Number(d.total), 0);
+
+  const statusAsOf = (status as any)?.startedAt ?? (status as any)?.as_of;
 
   return (
     <>
       <PageHeader
         title="Auditoria"
         subtitle={
-          status?.as_of
-            ? `Snapshot em ${new Date(status.as_of).toLocaleString("pt-BR")}`
+          statusAsOf
+            ? `Snapshot em ${new Date(statusAsOf).toLocaleString("pt-BR")}`
             : "Sem rebuild registrado"
         }
         tutorialKey="auditoria"

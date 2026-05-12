@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createServerFn } from "@tanstack/react-start";
+import { db } from "@/db/client";
+import { sql } from "drizzle-orm";
 import { PageHeader, Card } from "@/components/dashboard/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +12,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 
@@ -17,6 +19,73 @@ export const Route = createFileRoute("/admin/cadastros")({
   head: () => ({ meta: [{ title: "Cadastros · Febracis MKT" }] }),
   component: CadastrosPage,
 });
+
+// ---------------------------------------------------------------------------
+// Server functions
+// ---------------------------------------------------------------------------
+
+type TableName = "produtos" | "contas" | "edicoes" | "orcamentos" | "regras_classificacao";
+
+const listEntidade = createServerFn({ method: "GET" })
+  .inputValidator((d: { table: TableName; orderBy: string; orderAsc: boolean }) => d)
+  .handler(async ({ data }) => {
+    const dir = data.orderAsc ? sql`ASC` : sql`DESC`;
+    const result = await db.execute(
+      sql`SELECT * FROM ${sql.identifier(data.table)} ORDER BY ${sql.identifier(data.orderBy)} ${dir}`
+    );
+    return result as unknown as any[];
+  });
+
+const lookupProdutos = createServerFn({ method: "GET" }).handler(async () => {
+  const result = await db.execute(
+    sql`SELECT id, nome_produto FROM produtos ORDER BY nome_produto ASC`
+  );
+  return result as unknown as { id: string; nome_produto: string }[];
+});
+
+const lookupEdicoes = createServerFn({ method: "GET" }).handler(async () => {
+  const result = await db.execute(
+    sql`SELECT id, nome_edicao FROM edicoes ORDER BY nome_edicao ASC`
+  );
+  return result as unknown as { id: string; nome_edicao: string }[];
+});
+
+const upsertEntidade = createServerFn({ method: "POST" })
+  .inputValidator((d: { table: TableName; id?: string; payload: Record<string, any> }) => d)
+  .handler(async ({ data }) => {
+    if (data.id) {
+      // UPDATE
+      const sets = Object.entries(data.payload)
+        .map(([k, v]) => sql`${sql.identifier(k)} = ${v}`)
+        .reduce((acc, expr, i) => (i === 0 ? expr : sql`${acc}, ${expr}`));
+      await db.execute(
+        sql`UPDATE ${sql.identifier(data.table)} SET ${sets} WHERE id = ${data.id}`
+      );
+    } else {
+      // INSERT
+      const keys = Object.keys(data.payload);
+      const vals = Object.values(data.payload);
+      const colsSql = sql.join(keys.map((k) => sql.identifier(k)), sql`, `);
+      const valsSql = sql.join(vals.map((v) => sql`${v}`), sql`, `);
+      await db.execute(
+        sql`INSERT INTO ${sql.identifier(data.table)} (${colsSql}) VALUES (${valsSql})`
+      );
+    }
+    return { ok: true };
+  });
+
+const deleteEntidade = createServerFn({ method: "POST" })
+  .inputValidator((d: { table: TableName; id: string }) => d)
+  .handler(async ({ data }) => {
+    await db.execute(
+      sql`DELETE FROM ${sql.identifier(data.table)} WHERE id = ${data.id}`
+    );
+    return { ok: true };
+  });
+
+// ---------------------------------------------------------------------------
+// Types & config
+// ---------------------------------------------------------------------------
 
 type FieldType = "text" | "number" | "date" | "color" | "boolean" | "select";
 type FieldDef = {
@@ -27,7 +96,7 @@ type FieldDef = {
   optionsFrom?: "produtos" | "edicoes";
 };
 type EntityDef = {
-  table: "produtos" | "contas" | "edicoes" | "orcamentos" | "regras_classificacao";
+  table: TableName;
   label: string;
   orderBy: string;
   orderAsc?: boolean;
@@ -143,6 +212,10 @@ function fmtBRL(v: any) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+// ---------------------------------------------------------------------------
+// Page component
+// ---------------------------------------------------------------------------
+
 function CadastrosPage() {
   return (
     <div className="px-6 py-6 space-y-6">
@@ -170,48 +243,42 @@ function EntityCrud({ entity }: { entity: EntityDef }) {
 
   const list = useQuery({
     queryKey: ["cadastro", entity.table],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from(entity.table)
-        .select("*")
-        .order(entity.orderBy, { ascending: !!entity.orderAsc });
-      if (error) throw error;
-      return data ?? [];
-    },
+    queryFn: () =>
+      listEntidade({
+        data: {
+          table: entity.table,
+          orderBy: entity.orderBy,
+          orderAsc: !!entity.orderAsc,
+        },
+      }),
   });
 
   const produtos = useQuery({
     queryKey: ["lookup", "produtos"],
-    queryFn: async () => {
-      const { data } = await supabase.from("produtos").select("id, nome_produto").order("nome_produto");
-      return data ?? [];
-    },
+    queryFn: () => lookupProdutos(),
     enabled: entity.fields.some((f) => f.optionsFrom === "produtos"),
   });
+
   const edicoes = useQuery({
     queryKey: ["lookup", "edicoes"],
-    queryFn: async () => {
-      const { data } = await supabase.from("edicoes").select("id, nome_edicao").order("nome_edicao");
-      return data ?? [];
-    },
+    queryFn: () => lookupEdicoes(),
     enabled: entity.fields.some((f) => f.optionsFrom === "edicoes"),
   });
 
   const lookupMap: Record<string, { id: string; label: string }[]> = {
-    produtos: (produtos.data ?? []).map((p: any) => ({ id: p.id, label: p.nome_produto })),
-    edicoes: (edicoes.data ?? []).map((e: any) => ({ id: e.id, label: e.nome_edicao })),
+    produtos: (produtos.data ?? []).map((p) => ({ id: p.id, label: p.nome_produto })),
+    edicoes: (edicoes.data ?? []).map((e) => ({ id: e.id, label: e.nome_edicao })),
   };
 
   const upsertMut = useMutation({
-    mutationFn: async (payload: any) => {
-      if (editing?.id) {
-        const { error } = await supabase.from(entity.table).update(payload).eq("id", editing.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from(entity.table).insert(payload);
-        if (error) throw error;
-      }
-    },
+    mutationFn: (payload: any) =>
+      upsertEntidade({
+        data: {
+          table: entity.table,
+          id: editing?.id,
+          payload,
+        },
+      }),
     onSuccess: () => {
       toast.success("Salvo");
       setOpen(false);
@@ -222,10 +289,8 @@ function EntityCrud({ entity }: { entity: EntityDef }) {
   });
 
   const deleteMut = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from(entity.table).delete().eq("id", id);
-      if (error) throw error;
-    },
+    mutationFn: (id: string) =>
+      deleteEntidade({ data: { table: entity.table, id } }),
     onSuccess: () => {
       toast.success("Removido");
       qc.invalidateQueries({ queryKey: ["cadastro", entity.table] });
@@ -245,7 +310,6 @@ function EntityCrud({ entity }: { entity: EntityDef }) {
   function renderCell(row: any, col: EntityDef["columns"][number]) {
     if (col.render) return col.render(row);
     const v = row[col.key];
-    // resolve foreign key labels
     if (col.key === "produto_id") {
       const item = lookupMap.produtos.find((x) => x.id === v);
       return item?.label ?? <span className="text-muted-foreground">—</span>;

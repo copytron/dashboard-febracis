@@ -43,7 +43,7 @@ export function useFilters() {
   return ctx;
 }
 
-/** Apply filters to a vendas_atribuidas supabase query builder */
+/** Apply filters to a vendas_atribuidas query builder */
 export function applyVendasFilters<T extends { gte: any; lte: any; in: any }>(
   q: T,
   f: Filters,

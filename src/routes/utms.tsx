@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { useFilters, applyVendasFilters } from "@/lib/filters";
+import { createServerFn } from "@tanstack/react-start";
+import { db } from "@/db/client";
+import { sql, SQL } from "drizzle-orm";
+import { useFilters } from "@/lib/filters";
 import { PageHeader, Card } from "@/components/dashboard/PageHeader";
 import { GlobalFilters } from "@/components/dashboard/GlobalFilters";
 import { fmtBRL, fmtBRLFull, fmtNum, fmtPct, channelColor } from "@/lib/format";
@@ -29,6 +31,14 @@ const UTM_TABS = [
 
 type UtmKey = (typeof UTM_TABS)[number]["key"];
 
+type FiltersInput = {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  turmas?: string[];
+  estados?: string[];
+  canais?: string[];
+};
+
 type Row = {
   canal: string;
   valor_convertido: number;
@@ -38,6 +48,24 @@ type Row = {
   utm_midia: string | null;
 };
 
+const getUtmsData = createServerFn({ method: "GET" })
+  .inputValidator((input: FiltersInput) => input)
+  .handler(async ({ data: input }) => {
+    const conditions: SQL[] = [];
+    if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
+    if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
+    if (input.turmas?.length) conditions.push(sql`turma = ANY(${input.turmas})`);
+    if (input.estados?.length) conditions.push(sql`estado = ANY(${input.estados})`);
+    if (input.canais?.length) conditions.push(sql`canal = ANY(${input.canais})`);
+    const where = conditions.length > 0
+      ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+      : sql``;
+    const result = await db.execute(
+      sql`SELECT canal, valor_convertido, utm_campanha, utm_conteudo, utm_origem, utm_midia FROM vendas_atribuidas ${where} LIMIT 10000`
+    );
+    return result as unknown as Row[];
+  });
+
 function Utms() {
   const { filters } = useFilters();
   const [activeTab, setActiveTab] = useState<UtmKey>("utm_campanha");
@@ -46,15 +74,16 @@ function Utms() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["utms-all", filters],
-    queryFn: async () => {
-      const q = supabase
-        .from("vendas_atribuidas")
-        .select("canal, valor_convertido, utm_campanha, utm_conteudo, utm_origem, utm_midia")
-        .limit(10000);
-      const { data, error } = await applyVendasFilters(q as any, filters);
-      if (error) throw error;
-      return (data ?? []) as Row[];
-    },
+    queryFn: () =>
+      getUtmsData({
+        data: {
+          dateFrom: filters.dateFrom,
+          dateTo: filters.dateTo,
+          turmas: filters.turmas,
+          estados: filters.estados,
+          canais: filters.canais,
+        },
+      }),
   });
 
   const rows = data ?? [];

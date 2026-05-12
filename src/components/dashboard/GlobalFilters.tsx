@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { createServerFn } from "@tanstack/react-start";
+import { db } from "@/db/client";
+import { sql } from "drizzle-orm";
 import { useFilters } from "@/lib/filters";
 import { CANAIS_LIST } from "@/lib/format";
+
+const getFilterOptions = createServerFn({ method: "GET" }).handler(async () => {
+  const result = await db.execute(
+    sql`SELECT DISTINCT turma, estado FROM vendas_atribuidas WHERE turma IS NOT NULL OR estado IS NOT NULL LIMIT 3000`
+  );
+  return result as unknown as { turma: string | null; estado: string | null }[];
+});
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
@@ -95,17 +104,12 @@ export function GlobalFilters() {
   const canais = [...CANAIS_LIST];
 
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase
-        .from("vendas_atribuidas")
-        .select("turma, estado")
-        .limit(3000);
-      if (!data) return;
-      const t = Array.from(new Set(data.map((r: any) => r.turma).filter(Boolean))).sort();
-      const e = Array.from(new Set(data.map((r: any) => r.estado).filter(Boolean))).sort();
+    getFilterOptions().then((data) => {
+      const t = Array.from(new Set(data.map((r) => r.turma).filter(Boolean))).sort();
+      const e = Array.from(new Set(data.map((r) => r.estado).filter(Boolean))).sort();
       setTurmas(t as string[]);
       setEstados(e as string[]);
-    })();
+    });
   }, []);
 
   const hasFilters =

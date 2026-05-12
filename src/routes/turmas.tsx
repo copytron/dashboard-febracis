@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { useFilters, applyVendasFilters } from "@/lib/filters";
+import { createServerFn } from "@tanstack/react-start";
+import { db } from "@/db/client";
+import { sql, SQL } from "drizzle-orm";
+import { useFilters } from "@/lib/filters";
 import { PageHeader, Card } from "@/components/dashboard/PageHeader";
 import { GlobalFilters } from "@/components/dashboard/GlobalFilters";
 import { fmtBRL, fmtBRLFull, fmtNum, fmtPct, channelColor, TIPO_BADGE } from "@/lib/format";
@@ -20,6 +22,14 @@ export const Route = createFileRoute("/turmas")({
   component: Turmas,
 });
 
+type FiltersInput = {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  turmas?: string[];
+  estados?: string[];
+  canais?: string[];
+};
+
 type Row = {
   turma: string;
   canal: string;
@@ -28,6 +38,24 @@ type Row = {
   estado: string;
   utm_campanha: string | null;
 };
+
+const getTurmasData = createServerFn({ method: "GET" })
+  .inputValidator((input: FiltersInput) => input)
+  .handler(async ({ data: input }) => {
+    const conditions: SQL[] = [];
+    if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
+    if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
+    if (input.turmas?.length) conditions.push(sql`turma = ANY(${input.turmas})`);
+    if (input.estados?.length) conditions.push(sql`estado = ANY(${input.estados})`);
+    if (input.canais?.length) conditions.push(sql`canal = ANY(${input.canais})`);
+    const where = conditions.length > 0
+      ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+      : sql``;
+    const result = await db.execute(
+      sql`SELECT turma, canal, tipo_atribuicao, valor_convertido, estado, utm_campanha FROM vendas_atribuidas ${where} LIMIT 10000`
+    );
+    return result as unknown as Row[];
+  });
 
 function parseTurma(t: string): { ano: string; cidade: string } {
   // Format: "2026 - CIS248 - São Paulo"
@@ -52,15 +80,16 @@ function Turmas() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["turmas-all", filters],
-    queryFn: async () => {
-      const q = supabase
-        .from("vendas_atribuidas")
-        .select("turma, canal, tipo_atribuicao, valor_convertido, estado, utm_campanha")
-        .limit(10000);
-      const { data, error } = await applyVendasFilters(q as any, filters);
-      if (error) throw error;
-      return (data ?? []) as Row[];
-    },
+    queryFn: () =>
+      getTurmasData({
+        data: {
+          dateFrom: filters.dateFrom,
+          dateTo: filters.dateTo,
+          turmas: filters.turmas,
+          estados: filters.estados,
+          canais: filters.canais,
+        },
+      }),
   });
 
   const rows = data ?? [];

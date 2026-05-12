@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { useFilters, applyVendasFilters } from "@/lib/filters";
+import { createServerFn } from "@tanstack/react-start";
+import { db } from "@/db/client";
+import { sql, SQL } from "drizzle-orm";
+import { useFilters } from "@/lib/filters";
 import { PageHeader, Card } from "@/components/dashboard/PageHeader";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { GlobalFilters } from "@/components/dashboard/GlobalFilters";
@@ -11,6 +13,106 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Download, ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// ─── Server functions ────────────────────────────────────────────────────────
+
+type VendasAggInput = {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  turmas?: string[];
+  estados?: string[];
+  canais?: string[];
+  search?: string | null;
+  tipo?: string;
+};
+
+const getVendasAgg = createServerFn({ method: "POST" })
+  .inputValidator((d: VendasAggInput) => d)
+  .handler(async ({ data }) => {
+    const input = data as VendasAggInput;
+    const conditions: SQL[] = [];
+    if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
+    if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
+    if (input.turmas?.length) conditions.push(sql`turma = ANY(${input.turmas})`);
+    if (input.estados?.length) conditions.push(sql`estado = ANY(${input.estados})`);
+    if (input.canais?.length) conditions.push(sql`canal = ANY(${input.canais})`);
+    if (input.search) conditions.push(sql`(nome ILIKE ${"%" + input.search + "%"} OR email ILIKE ${"%" + input.search + "%"})`);
+    if (input.tipo === "Com Lead") conditions.push(sql`tipo_atribuicao = ANY(ARRAY['Lead Anterior','Lead Posterior'])`);
+    if (input.tipo === "Sem Atribuicao") conditions.push(sql`tipo_atribuicao = 'Sem Atribuição'`);
+
+    const where = conditions.length > 0 ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``;
+
+    const result = await db.execute(sql`
+      SELECT
+        COUNT(*)::int AS total_count,
+        COALESCE(SUM(valor_convertido), 0)::numeric AS receita_sum,
+        COUNT(*) FILTER (WHERE tipo_atribuicao IN ('Lead Anterior','Lead Posterior'))::int AS com_lead_count
+      FROM vendas_atribuidas
+      ${where}
+    `);
+    const row = ((result as any[])[0]) as any;
+    return {
+      total_count: Number(row?.total_count ?? 0),
+      receita_sum: Number(row?.receita_sum ?? 0),
+      com_lead_count: Number(row?.com_lead_count ?? 0),
+    };
+  });
+
+type VendasPageInput = {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  turmas?: string[];
+  estados?: string[];
+  canais?: string[];
+  search?: string | null;
+  tipo?: string;
+  pageSize: number;
+  offset: number;
+};
+
+const getVendasPage = createServerFn({ method: "POST" })
+  .inputValidator((d: VendasPageInput) => d)
+  .handler(async ({ data }) => {
+    const input = data as VendasPageInput;
+    const conditions: SQL[] = [];
+    if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
+    if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
+    if (input.turmas?.length) conditions.push(sql`turma = ANY(${input.turmas})`);
+    if (input.estados?.length) conditions.push(sql`estado = ANY(${input.estados})`);
+    if (input.canais?.length) conditions.push(sql`canal = ANY(${input.canais})`);
+    if (input.search) conditions.push(sql`(nome ILIKE ${"%" + input.search + "%"} OR email ILIKE ${"%" + input.search + "%"})`);
+    if (input.tipo === "Com Lead") conditions.push(sql`tipo_atribuicao = ANY(ARRAY['Lead Anterior','Lead Posterior'])`);
+    if (input.tipo === "Sem Atribuicao") conditions.push(sql`tipo_atribuicao = 'Sem Atribuição'`);
+
+    const where = conditions.length > 0 ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``;
+
+    const result = await db.execute(sql`
+      SELECT nome, email, turma, data_matricula, valor_convertido, estado,
+             canal, tipo_atribuicao, tipo_match, match_score, match_lag_days, utm_campanha
+      FROM vendas_atribuidas
+      ${where}
+      ORDER BY data_matricula DESC NULLS LAST
+      LIMIT ${input.pageSize} OFFSET ${input.offset}
+    `);
+    return (result as any[]);
+  });
+
+const getJornadaByEmails = createServerFn({ method: "POST" })
+  .inputValidator((d: { emails: string[] }) => d)
+  .handler(async ({ data }) => {
+    const input = data as { emails: string[] };
+    if (!input.emails.length) return [];
+    const result = await db.execute(sql`
+      SELECT email, turma, toque_num, tipo, data_lead, dias_antes_compra,
+             canal_normalizado, utm_campanha, utm_conteudo, utm_origem
+      FROM jornada_normalizada
+      WHERE email = ANY(${input.emails})
+      LIMIT 1000
+    `);
+    return (result as any[]) as JornadaRow[];
+  });
+
+// ─── Route ───────────────────────────────────────────────────────────────────
 
 export const Route = createFileRoute("/vendas")({
   head: () => ({
@@ -68,43 +170,41 @@ function Vendas() {
   }, [filters, tipoFiltro]);
 
   const from = (pagina - 1) * PAGE_SIZE;
-  const to = from + PAGE_SIZE - 1;
 
-  // Query 1: KPI aggregates via RPC (bypasses REST API row limit)
+  // Query 1: KPI aggregates via server function
   const { data: aggData, isLoading: loadingAgg } = useQuery({
     queryKey: ["vendas-agg", filters, tipoFiltro, debouncedBusca],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("get_vendas_agg", {
-        p_date_from: filters.dateFrom ?? null,
-        p_date_to: filters.dateTo ?? null,
-        p_turmas: filters.turmas.length ? filters.turmas : null,
-        p_estados: filters.estados.length ? filters.estados : null,
-        p_canais: filters.canais.length ? filters.canais : null,
-        p_search: debouncedBusca || null,
-        p_tipo: tipoFiltro,
-      });
-      if (error) throw error;
-      return data?.[0] as { total_count: number; receita_sum: number; com_lead_count: number } | undefined;
-    },
+    queryFn: () =>
+      getVendasAgg({
+        data: {
+          dateFrom: filters.dateFrom,
+          dateTo: filters.dateTo,
+          turmas: filters.turmas,
+          estados: filters.estados,
+          canais: filters.canais,
+          search: debouncedBusca || null,
+          tipo: tipoFiltro,
+        },
+      }),
   });
 
   // Query 2: Current page data (server-side paginated, 50 rows at a time)
   const { data: pageData, isLoading: loadingPage } = useQuery({
     queryKey: ["vendas-page", filters, tipoFiltro, debouncedBusca, pagina],
-    queryFn: async () => {
-      let q2 = supabase
-        .from("vendas_atribuidas")
-        .select("nome, email, turma, data_matricula, valor_convertido, estado, canal, tipo_atribuicao, tipo_match, match_score, match_lag_days, utm_campanha")
-        .order("data_matricula", { ascending: false })
-        .range(from, to) as any;
-      q2 = applyVendasFilters(q2, filters);
-      if (debouncedBusca) q2 = q2.or(`nome.ilike.%${debouncedBusca}%,email.ilike.%${debouncedBusca}%`);
-      if (tipoFiltro === "Com Lead") q2 = q2.in("tipo_atribuicao", ["Lead Anterior", "Lead Posterior"]);
-      if (tipoFiltro === "Sem Atribuicao") q2 = q2.eq("tipo_atribuicao", "Sem Atribuição");
-      const { data, error } = await q2;
-      if (error) throw error;
-      return (data ?? []) as any[];
-    },
+    queryFn: () =>
+      getVendasPage({
+        data: {
+          dateFrom: filters.dateFrom,
+          dateTo: filters.dateTo,
+          turmas: filters.turmas,
+          estados: filters.estados,
+          canais: filters.canais,
+          search: debouncedBusca || null,
+          tipo: tipoFiltro,
+          pageSize: PAGE_SIZE,
+          offset: from,
+        },
+      }),
   });
 
   // Query 3: Jornada for emails on the current page only
@@ -116,15 +216,7 @@ function Vendas() {
   const { data: jornadaData } = useQuery({
     queryKey: ["vendas-jornada", pageEmails],
     enabled: pageEmails.length > 0,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("jornada_normalizada")
-        .select("email, turma, toque_num, tipo, data_lead, dias_antes_compra, canal_normalizado, utm_campanha, utm_conteudo, utm_origem")
-        .in("email", pageEmails)
-        .limit(1000);
-      if (error) throw error;
-      return (data ?? []) as JornadaRow[];
-    },
+    queryFn: () => getJornadaByEmails({ data: { emails: pageEmails as string[] } }),
   });
 
   const isLoading = loadingAgg || loadingPage;

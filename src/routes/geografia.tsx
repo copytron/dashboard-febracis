@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { useFilters, applyVendasFilters } from "@/lib/filters";
+import { createServerFn } from "@tanstack/react-start";
+import { db } from "@/db/client";
+import { sql, SQL } from "drizzle-orm";
+import { useFilters } from "@/lib/filters";
 import { PageHeader, Card } from "@/components/dashboard/PageHeader";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { GlobalFilters } from "@/components/dashboard/GlobalFilters";
@@ -19,12 +21,38 @@ export const Route = createFileRoute("/geografia")({
   component: Geografia,
 });
 
+type FiltersInput = {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  turmas?: string[];
+  estados?: string[];
+  canais?: string[];
+};
+
 type Row = {
   estado: string | null;
   cidade: string | null;
   canal: string;
   valor_convertido: number;
 };
+
+const getGeografiaData = createServerFn({ method: "GET" })
+  .inputValidator((input: FiltersInput) => input)
+  .handler(async ({ data: input }) => {
+    const conditions: SQL[] = [];
+    if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
+    if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
+    if (input.turmas?.length) conditions.push(sql`turma = ANY(${input.turmas})`);
+    if (input.estados?.length) conditions.push(sql`estado = ANY(${input.estados})`);
+    if (input.canais?.length) conditions.push(sql`canal = ANY(${input.canais})`);
+    const where = conditions.length > 0
+      ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+      : sql``;
+    const result = await db.execute(
+      sql`SELECT estado, cidade, canal, valor_convertido FROM vendas_atribuidas ${where} LIMIT 10000`
+    );
+    return result as unknown as Row[];
+  });
 
 function Geografia() {
   const { filters } = useFilters();
@@ -33,15 +61,16 @@ function Geografia() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["geografia-all", filters],
-    queryFn: async () => {
-      const q = supabase
-        .from("vendas_atribuidas")
-        .select("estado, cidade, canal, valor_convertido")
-        .limit(10000);
-      const { data, error } = await applyVendasFilters(q as any, filters);
-      if (error) throw error;
-      return (data ?? []) as Row[];
-    },
+    queryFn: () =>
+      getGeografiaData({
+        data: {
+          dateFrom: filters.dateFrom,
+          dateTo: filters.dateTo,
+          turmas: filters.turmas,
+          estados: filters.estados,
+          canais: filters.canais,
+        },
+      }),
   });
 
   const rows = data ?? [];

@@ -1,12 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { applyVendasFilters, useFilters } from "@/lib/filters";
+import { createServerFn } from "@tanstack/react-start";
+import { db } from "@/db/client";
+import { sql, SQL } from "drizzle-orm";
+import { useFilters } from "@/lib/filters";
 import { PageHeader, Card } from "@/components/dashboard/PageHeader";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { GlobalFilters } from "@/components/dashboard/GlobalFilters";
-import { CHANNEL_COLORS, channelColor, fmtBRL, fmtBRLFull, fmtNum, fmtPct, TIPO_BADGE } from "@/lib/format";
+import { channelColor, fmtBRL, fmtBRLFull, fmtNum, fmtPct, TIPO_BADGE } from "@/lib/format";
 import {
   ResponsiveContainer,
   BarChart,
@@ -33,6 +35,14 @@ export const Route = createFileRoute("/")({
   component: Overview,
 });
 
+type FiltersInput = {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  turmas?: string[];
+  estados?: string[];
+  canais?: string[];
+};
+
 type Row = {
   canal: string;
   tipo_atribuicao: string;
@@ -41,20 +51,39 @@ type Row = {
   estado: string | null;
 };
 
+const getOverviewData = createServerFn({ method: "GET" })
+  .inputValidator((input: FiltersInput) => input)
+  .handler(async ({ data: input }) => {
+    const conditions: SQL[] = [];
+    if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
+    if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
+    if (input.turmas?.length) conditions.push(sql`turma = ANY(${input.turmas})`);
+    if (input.estados?.length) conditions.push(sql`estado = ANY(${input.estados})`);
+    if (input.canais?.length) conditions.push(sql`canal = ANY(${input.canais})`);
+    const where = conditions.length > 0
+      ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+      : sql``;
+    const result = await db.execute(
+      sql`SELECT canal, tipo_atribuicao, valor_convertido, data_matricula, estado FROM vendas_atribuidas ${where} LIMIT 10000`
+    );
+    return result as unknown as Row[];
+  });
+
 function Overview() {
   const { filters } = useFilters();
 
   const { data, isLoading } = useQuery({
     queryKey: ["overview", filters],
-    queryFn: async () => {
-      const q = supabase
-        .from("vendas_atribuidas")
-        .select("canal, tipo_atribuicao, valor_convertido, data_matricula, estado")
-        .limit(10000);
-      const { data, error } = await applyVendasFilters(q as any, filters);
-      if (error) throw error;
-      return (data ?? []) as Row[];
-    },
+    queryFn: () =>
+      getOverviewData({
+        data: {
+          dateFrom: filters.dateFrom,
+          dateTo: filters.dateTo,
+          turmas: filters.turmas,
+          estados: filters.estados,
+          canais: filters.canais,
+        },
+      }),
   });
 
   const rows = data ?? [];
