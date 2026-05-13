@@ -8,9 +8,13 @@ import { useFilters } from "@/lib/filters";
 import { PageHeader, Card } from "@/components/dashboard/PageHeader";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { GlobalFilters } from "@/components/dashboard/GlobalFilters";
+import { RuleBuilder } from "@/components/dashboard/RuleBuilder";
 import { fmtBRL, fmtBRLFull, fmtNum, fmtPct, channelColor } from "@/lib/format";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Cell } from "recharts";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { SlidersHorizontal } from "lucide-react";
 
 export const Route = createFileRoute("/canais")({
   head: () => ({
@@ -129,6 +133,7 @@ const getCanaisDetail = createServerFn({ method: "GET" })
 function Canais() {
   const { filters } = useFilters();
   const [canal, setCanal] = useState<string>("Todos");
+  const [showRuleBuilder, setShowRuleBuilder] = useState(false);
 
   const { data: breakdown, isLoading: loadingBreak } = useQuery({
     queryKey: ["canais-breakdown", filters],
@@ -213,7 +218,25 @@ function Canais() {
 
   return (
     <>
-      <PageHeader title="Canais" subtitle="Performance detalhada por canal de marketing" tutorialKey="canais" />
+      <PageHeader
+        title="Canais"
+        subtitle="Performance detalhada por canal de marketing"
+        tutorialKey="canais"
+        actions={
+          <Button variant="outline" size="sm" onClick={() => setShowRuleBuilder(true)}>
+            <SlidersHorizontal className="size-4 mr-2" /> Configurar canais
+          </Button>
+        }
+      />
+
+      <Dialog open={showRuleBuilder} onOpenChange={setShowRuleBuilder}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Regras de classificação de canal</DialogTitle>
+          </DialogHeader>
+          <RuleBuilder />
+        </DialogContent>
+      </Dialog>
       <GlobalFilters />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
