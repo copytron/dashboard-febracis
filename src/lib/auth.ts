@@ -17,10 +17,8 @@ export const auth = betterAuth({
     enabled: true,
   },
   session: {
-    cookieCache: {
-      enabled: true,
-      maxAge: 60 * 60 * 24 * 7, // 7 dias
-    },
+    expiresIn: 60 * 60 * 24 * 7, // 7 dias
+    updateAge: 60 * 60 * 24,     // renovar cookie se falta < 1 dia
   },
   trustedOrigins: [process.env.BETTER_AUTH_URL ?? "http://localhost:3000"],
 });

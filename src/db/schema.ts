@@ -214,7 +214,10 @@ export const dqResolutions = pgTable("dq_resolutions", {
 
 export const produtos = pgTable("produtos", {
   id: uuid("id").primaryKey().defaultRandom(),
-  nome: text("nome").notNull(),
+  nomeProduto: text("nome_produto").notNull(),
+  abreviacao: text("abreviacao").notNull(),
+  corHex: text("cor_hex").notNull().default("#1E40AF"),
+  edicaoAnualUnica: boolean("edicao_anual_unica").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
@@ -227,19 +230,29 @@ export const contas = pgTable("contas", {
 
 export const edicoes = pgTable("edicoes", {
   id: uuid("id").primaryKey().defaultRandom(),
-  nome: text("nome").notNull(),
+  nomeEdicao: text("nome_edicao").notNull(),
+  produtoId: uuid("produto_id").references(() => produtos.id),
+  dataInicio: date("data_inicio"),
+  dataFim: date("data_fim"),
+  valorAprovado: numeric("valor_aprovado"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
 export const orcamentos = pgTable("orcamentos", {
   id: uuid("id").primaryKey().defaultRandom(),
-  nome: text("nome").notNull(),
+  mesReferencia: text("mes_referencia").notNull(),
+  produtoId: uuid("produto_id").references(() => produtos.id),
+  edicaoId: uuid("edicao_id").references(() => edicoes.id),
+  valorAprovado: numeric("valor_aprovado").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
 export const regrasClassificacao = pgTable("regras_classificacao", {
   id: uuid("id").primaryKey().defaultRandom(),
   nome: text("nome").notNull(),
+  canal: text("canal").notNull(),
+  prioridade: integer("prioridade").notNull().default(0),
+  ativo: boolean("ativo").notNull().default(true),
   config: jsonb("config"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
@@ -377,6 +390,15 @@ export const fctLeadRelations = relations(fctLead, ({ many }) => ({
 export const bridgeLeadVendaRelations = relations(bridgeLeadVenda, ({ one }) => ({
   lead: one(fctLead, { fields: [bridgeLeadVenda.leadId], references: [fctLead.leadId] }),
   venda: one(fctVenda, { fields: [bridgeLeadVenda.vendaId], references: [fctVenda.vendaId] }),
+}));
+
+export const edicoesRelations = relations(edicoes, ({ one }) => ({
+  produto: one(produtos, { fields: [edicoes.produtoId], references: [produtos.id] }),
+}));
+
+export const orcamentosRelations = relations(orcamentos, ({ one }) => ({
+  produto: one(produtos, { fields: [orcamentos.produtoId], references: [produtos.id] }),
+  edicao: one(edicoes, { fields: [orcamentos.edicaoId], references: [edicoes.id] }),
 }));
 
 export const workspacesRelations = relations(workspaces, ({ many }) => ({

@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { importSheet, previewSheet, getImportHistory } from "@/server/import.functions";
+import { syncWindsor } from "@/server/windsor.sync";
 import { toast } from "sonner";
-import { Download, Upload, RefreshCw } from "lucide-react";
+import { Download, Upload, RefreshCw, Zap } from "lucide-react";
 
 export const Route = createFileRoute("/admin/import")({
   head: () => ({ meta: [{ title: "Importar planilha · Febracis MKT" }] }),
@@ -16,13 +17,20 @@ export const Route = createFileRoute("/admin/import")({
 });
 
 function ImportPage() {
-  const previewFn = useServerFn(previewSheet);
-  const importFn = useServerFn(importSheet);
-  const qc = useQueryClient();
-  const [sheetUrl, setSheetUrl] = useState("");
-  const [gidLeads, setGidLeads] = useState("");
+  const previewFn  = useServerFn(previewSheet);
+  const importFn   = useServerFn(importSheet);
+  const syncFn     = useServerFn(syncWindsor);
+  const qc         = useQueryClient();
+
+  // ── planilha state
+  const [sheetUrl,  setSheetUrl]  = useState("");
+  const [gidLeads,  setGidLeads]  = useState("");
   const [gidVendas, setGidVendas] = useState("");
-  const [preview, setPreview] = useState<any>(null);
+  const [preview,   setPreview]   = useState<any>(null);
+
+  // ── windsor state
+  const [windsorFrom, setWindsorFrom] = useState("2020-01-01");
+  const [syncResult,  setSyncResult]  = useState<any>(null);
 
   const previewMut = useMutation({
     mutationFn: (gid: string) => previewFn({ data: { sheetUrl, gid: gid || undefined } }),
@@ -40,22 +48,97 @@ function ImportPage() {
     onError: (e: any) => toast.error(e?.message ?? "Erro na importação"),
   });
 
+  const windsorMut = useMutation({
+    mutationFn: () =>
+      syncFn({ data: { dateFrom: windsorFrom } }),
+    onSuccess: (d) => {
+      setSyncResult(d);
+      toast.success(
+        `Sync concluído! ${d.oppInserted} oportunidades · ${d.leadInserted} leads`,
+      );
+      qc.invalidateQueries({ queryKey: ["import-history"] });
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Erro no sync Windsor"),
+  });
+
   const historyFn = useServerFn(getImportHistory);
-  const history = useQuery({
+  const history   = useQuery({
     queryKey: ["import-history"],
-    queryFn: () => historyFn({ data: undefined }),
+    queryFn:  () => historyFn({ data: undefined }),
   });
 
   return (
     <>
       <PageHeader
         title="Importar planilha"
-        subtitle="Sincronize Leads e Vendas a partir de uma URL pública do Google Sheets"
+        subtitle="Sincronize Leads e Vendas a partir de uma URL pública do Google Sheets ou via Windsor.ai"
         tutorialKey="import"
       />
 
+      {/* ── Windsor.ai Sync ─────────────────────────────────────────────── */}
+      <Card className="mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Zap className="size-4 text-amber-400" />
+          <span className="font-semibold text-sm">Sincronizar via Windsor.ai</span>
+          <span className="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400 ml-1">
+            Salesforce CRM
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          Importa oportunidades (vendas) e leads diretamente do Salesforce via Windsor.ai.
+          A conexão é configurada no servidor — sem necessidade de API Key manual.
+        </p>
+
+        <div className="flex items-center gap-3 mb-4">
+          <div>
+            <Label className="text-xs">Data inicial</Label>
+            <Input
+              type="date"
+              value={windsorFrom}
+              onChange={(e) => setWindsorFrom(e.target.value)}
+              className="mt-1 w-40"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={() => windsorMut.mutate()}
+            disabled={windsorMut.isPending}
+            className="gap-1.5"
+          >
+            <Zap className="size-3.5" />
+            {windsorMut.isPending ? "Sincronizando…" : "Sincronizar agora"}
+          </Button>
+          {windsorMut.isPending && (
+            <span className="text-xs text-muted-foreground animate-pulse">
+              Buscando dados do Salesforce… pode levar alguns minutos.
+            </span>
+          )}
+        </div>
+
+        {syncResult && (
+          <div className="mt-4 p-3 rounded-lg bg-emerald-950/40 border border-emerald-800/40 text-xs space-y-1">
+            <div className="font-semibold text-emerald-400">Último sync concluído</div>
+            <div className="text-muted-foreground">
+              Oportunidades gravadas: <span className="text-foreground">{syncResult.oppInserted}</span>
+              {syncResult.oppSkipped > 0 && ` (${syncResult.oppSkipped} ignoradas)`}
+            </div>
+            <div className="text-muted-foreground">
+              Leads gravados: <span className="text-foreground">{syncResult.leadInserted}</span>
+              {syncResult.leadSkipped > 0 && ` (${syncResult.leadSkipped} ignorados)`}
+            </div>
+            <div className="text-muted-foreground">
+              Período: <span className="text-foreground">{syncResult.dateFrom} → {syncResult.dateTo}</span>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* ── Google Sheets ────────────────────────────────────────────────── */}
       <Card className="mb-6">
         <div className="space-y-4">
+          <div className="font-semibold text-sm">Importar via Google Sheets</div>
           <div>
             <Label className="text-xs">URL do Google Sheets</Label>
             <Input
@@ -78,8 +161,7 @@ function ImportPage() {
               </div>
               <div className="flex gap-2">
                 <Button
-                  size="sm"
-                  variant="outline"
+                  size="sm" variant="outline"
                   onClick={() => previewMut.mutate(gidLeads)}
                   disabled={!sheetUrl || previewMut.isPending}
                 >
@@ -103,8 +185,7 @@ function ImportPage() {
               </div>
               <div className="flex gap-2">
                 <Button
-                  size="sm"
-                  variant="outline"
+                  size="sm" variant="outline"
                   onClick={() => previewMut.mutate(gidVendas)}
                   disabled={!sheetUrl || previewMut.isPending}
                 >
@@ -156,6 +237,7 @@ function ImportPage() {
         </Card>
       )}
 
+      {/* ── Histórico ───────────────────────────────────────────────────── */}
       <Card title="Histórico de importações">
         <div className="flex items-center justify-end mb-2">
           <Button variant="ghost" size="sm" onClick={() => history.refetch()}>
@@ -167,10 +249,10 @@ function ImportPage() {
             <thead>
               <tr className="text-left text-muted-foreground border-b border-border">
                 <th className="py-2 pr-4">Quando</th>
-                <th className="py-2 pr-4">Aba</th>
+                <th className="py-2 pr-4">Tipo</th>
                 <th className="py-2 pr-4 text-right">Linhas</th>
                 <th className="py-2 pr-4">Status</th>
-                <th className="py-2 pr-4">Erro</th>
+                <th className="py-2 pr-4">Fonte</th>
               </tr>
             </thead>
             <tbody>
@@ -182,10 +264,12 @@ function ImportPage() {
                   <td className="py-2 pr-4">
                     <span className={
                       r.status === "success" ? "text-emerald-500" :
-                      r.status === "error" ? "text-red-500" : "text-muted-foreground"
+                      r.status === "error"   ? "text-red-500"     : "text-muted-foreground"
                     }>{r.status}</span>
                   </td>
-                  <td className="py-2 pr-4 text-muted-foreground max-w-[300px] truncate" title={r.erro}>{r.erro}</td>
+                  <td className="py-2 pr-4 text-muted-foreground max-w-[300px] truncate" title={r.url}>
+                    {r.url?.startsWith("windsor:") ? "Windsor.ai" : "Google Sheets"}
+                  </td>
                 </tr>
               ))}
               {!history.data?.length && (

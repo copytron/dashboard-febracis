@@ -8,6 +8,27 @@
       "when": 1778613846250,
       "tag": "0000_happy_titanium_man",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1778620000000,
+      "tag": "0001_windsor_views",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778700000000,
+      "tag": "0002_fix_cadastros_and_regras",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1778700100000,
+      "tag": "0003_derive_canal_dynamic",
+      "breakpoints": true
     }
   ]
 }

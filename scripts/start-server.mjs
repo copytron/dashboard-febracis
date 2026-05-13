@@ -30,6 +30,14 @@ const MIME = {
 
 const { default: app } = await import("../dist/server/server.js");
 
+// Cron jobs (sync Windsor.ai a cada 12h)
+try {
+  const { startCronJobs } = await import("../dist/server/cron.js");
+  startCronJobs();
+} catch (e) {
+  console.warn("[cron] Não foi possível iniciar cron jobs:", e.message);
+}
+
 const server = createServer(async (req, res) => {
   try {
     const urlPath = new URL(req.url, "http://localhost").pathname;
@@ -47,7 +55,9 @@ const server = createServer(async (req, res) => {
     }
 
     // Converte para Web API Request
-    const url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
+    // Respeita X-Forwarded-Proto do Traefik para que better-auth use cookie __Secure-
+    const proto = req.headers["x-forwarded-proto"]?.split(",")[0]?.trim() ?? "http";
+    const url = new URL(req.url, `${proto}://${req.headers.host ?? "localhost"}`);
     const headers = new Headers();
     for (const [k, v] of Object.entries(req.headers)) {
       if (v != null) headers.set(k, Array.isArray(v) ? v.join(", ") : v);

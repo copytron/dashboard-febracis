@@ -2,7 +2,7 @@ services:
   app:
     image: dashboard-febracis:latest
     environment:
-      DATABASE_URL: postgresql://febracis:${POSTGRES_PASSWORD}@postgres:5432/Postgres_Febracis
+      DATABASE_URL: postgresql://febracis:Febr%40cis%40melhor@postgres:5432/Postgres_Febracis
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       BETTER_AUTH_URL: https://dashboard-febracis.fluq.com.br
       NODE_ENV: production
@@ -20,8 +20,11 @@ services:
         - "traefik.http.routers.dashboard-febracis.entrypoints=websecure"
         - "traefik.http.routers.dashboard-febracis.tls.certresolver=letsencryptresolver"
         - "traefik.http.routers.dashboard-febracis.middlewares=sslheader"
+        - "traefik.http.routers.dashboard-febracis.service=dashboard-febracis"
+        - "traefik.http.routers.dashboard-febracis.priority=1"
         - "traefik.http.services.dashboard-febracis.loadbalancer.server.port=3000"
-        - "traefik.http.middlewares.sslheader.headers.customrequestheaders.X-Forwarded-Proto=https"
+        - "traefik.http.services.dashboard-febracis.loadbalancer.passHostHeader=true"
+        - "traefik.docker.network=network_swarm_public"
 
   postgres:
     image: postgres:16-alpine
