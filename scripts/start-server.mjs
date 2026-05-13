@@ -32,7 +32,7 @@ const { default: app } = await import("../dist/server/server.js");
 
 // Cron jobs (sync Windsor.ai a cada 12h)
 try {
-  const { startCronJobs } = await import("../dist/server/cron.js");
+  const { startCronJobs } = await import("../src/server/cron.ts");
   startCronJobs();
 } catch (e) {
   console.warn("[cron] Não foi possível iniciar cron jobs:", e.message);
