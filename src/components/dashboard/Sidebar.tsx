@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Radio, GraduationCap, Tag, MapPin, ShoppingCart, Upload, User, Database, ChevronLeft, ChevronRight, Network, ShieldCheck, Settings } from "lucide-react";
+import { LayoutDashboard, Radio, GraduationCap, Tag, MapPin, ShoppingCart, Upload, User, Database, ChevronLeft, ChevronRight, Network, ShieldCheck, Settings, GitMerge } from "lucide-react";
 
 type Item = { to: string; label: string; icon: any; badge?: string };
 type Section = { title: string | null; items: Item[] };
@@ -24,6 +24,7 @@ const sections: Section[] = [
     title: "Marketing",
     items: [
       { to: "/canais", label: "Canais", icon: Radio },
+      { to: "/atribuicao", label: "Atribuição", icon: GitMerge },
       { to: "/utms", label: "Campanhas", icon: Tag },
     ],
   },

@@ -18,6 +18,7 @@ import { Route as GeografiaRouteImport } from './routes/geografia'
 import { Route as ContaRouteImport } from './routes/conta'
 import { Route as CanaisRouteImport } from './routes/canais'
 import { Route as AuditoriaRouteImport } from './routes/auditoria'
+import { Route as AtribuicaoRouteImport } from './routes/atribuicao'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppWorkspacesRouteImport } from './routes/app.workspaces'
 import { Route as AdminImportRouteImport } from './routes/admin.import'
@@ -70,6 +71,11 @@ const AuditoriaRoute = AuditoriaRouteImport.update({
   path: '/auditoria',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AtribuicaoRoute = AtribuicaoRouteImport.update({
+  id: '/atribuicao',
+  path: '/atribuicao',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -103,6 +109,7 @@ const AppWWidModelRoute = AppWWidModelRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/atribuicao': typeof AtribuicaoRoute
   '/auditoria': typeof AuditoriaRoute
   '/canais': typeof CanaisRoute
   '/conta': typeof ContaRoute
@@ -120,6 +127,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/atribuicao': typeof AtribuicaoRoute
   '/auditoria': typeof AuditoriaRoute
   '/canais': typeof CanaisRoute
   '/conta': typeof ContaRoute
@@ -138,6 +146,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/atribuicao': typeof AtribuicaoRoute
   '/auditoria': typeof AuditoriaRoute
   '/canais': typeof CanaisRoute
   '/conta': typeof ContaRoute
@@ -157,6 +166,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/atribuicao'
     | '/auditoria'
     | '/canais'
     | '/conta'
@@ -174,6 +184,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/atribuicao'
     | '/auditoria'
     | '/canais'
     | '/conta'
@@ -191,6 +202,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/atribuicao'
     | '/auditoria'
     | '/canais'
     | '/conta'
@@ -209,6 +221,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AtribuicaoRoute: typeof AtribuicaoRoute
   AuditoriaRoute: typeof AuditoriaRoute
   CanaisRoute: typeof CanaisRoute
   ContaRoute: typeof ContaRoute
@@ -290,6 +303,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuditoriaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/atribuicao': {
+      id: '/atribuicao'
+      path: '/atribuicao'
+      fullPath: '/atribuicao'
+      preLoaderRoute: typeof AtribuicaoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -337,6 +357,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AtribuicaoRoute: AtribuicaoRoute,
   AuditoriaRoute: AuditoriaRoute,
   CanaisRoute: CanaisRoute,
   ContaRoute: ContaRoute,
