@@ -22,6 +22,9 @@ type VendasAggInput = {
   turmas?: string[];
   estados?: string[];
   canais?: string[];
+  cursos?: string[];
+  unidadesGeradoras?: string[];
+  utmSrc?: string[];
   search?: string | null;
   tipo?: string;
 };
@@ -33,9 +36,12 @@ const getVendasAgg = createServerFn({ method: "POST" })
     const conditions: SQL[] = [];
     if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
     if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
-    if (input.turmas?.length) conditions.push(sql`turma = ANY(${input.turmas})`);
-    if (input.estados?.length) conditions.push(sql`estado = ANY(${input.estados})`);
-    if (input.canais?.length) conditions.push(sql`canal = ANY(${input.canais})`);
+    if (input.turmas?.length) conditions.push(sql`turma IN (${sql.join(input.turmas.map(v => sql`${v}`), sql`, `)})`);
+    if (input.estados?.length) conditions.push(sql`estado IN (${sql.join(input.estados.map(v => sql`${v}`), sql`, `)})`);
+    if (input.canais?.length) conditions.push(sql`canal IN (${sql.join(input.canais.map(v => sql`${v}`), sql`, `)})`);
+    if (input.cursos?.length) conditions.push(sql`curso IN (${sql.join(input.cursos.map(v => sql`${v}`), sql`, `)})`);
+    if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
+    if (input.utmSrc?.length) conditions.push(sql`utm_src IN (${sql.join(input.utmSrc.map(v => sql`${v}`), sql`, `)})`);
     if (input.search) conditions.push(sql`(nome ILIKE ${"%" + input.search + "%"} OR email ILIKE ${"%" + input.search + "%"})`);
     if (input.tipo === "Com Lead") conditions.push(sql`tipo_atribuicao = ANY(ARRAY['Lead Anterior','Lead Posterior'])`);
     if (input.tipo === "Sem Atribuicao") conditions.push(sql`tipo_atribuicao = 'Sem Atribuição'`);
@@ -64,6 +70,9 @@ type VendasPageInput = {
   turmas?: string[];
   estados?: string[];
   canais?: string[];
+  cursos?: string[];
+  unidadesGeradoras?: string[];
+  utmSrc?: string[];
   search?: string | null;
   tipo?: string;
   pageSize: number;
@@ -77,9 +86,12 @@ const getVendasPage = createServerFn({ method: "POST" })
     const conditions: SQL[] = [];
     if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
     if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
-    if (input.turmas?.length) conditions.push(sql`turma = ANY(${input.turmas})`);
-    if (input.estados?.length) conditions.push(sql`estado = ANY(${input.estados})`);
-    if (input.canais?.length) conditions.push(sql`canal = ANY(${input.canais})`);
+    if (input.turmas?.length) conditions.push(sql`turma IN (${sql.join(input.turmas.map(v => sql`${v}`), sql`, `)})`);
+    if (input.estados?.length) conditions.push(sql`estado IN (${sql.join(input.estados.map(v => sql`${v}`), sql`, `)})`);
+    if (input.canais?.length) conditions.push(sql`canal IN (${sql.join(input.canais.map(v => sql`${v}`), sql`, `)})`);
+    if (input.cursos?.length) conditions.push(sql`curso IN (${sql.join(input.cursos.map(v => sql`${v}`), sql`, `)})`);
+    if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
+    if (input.utmSrc?.length) conditions.push(sql`utm_src IN (${sql.join(input.utmSrc.map(v => sql`${v}`), sql`, `)})`);
     if (input.search) conditions.push(sql`(nome ILIKE ${"%" + input.search + "%"} OR email ILIKE ${"%" + input.search + "%"})`);
     if (input.tipo === "Com Lead") conditions.push(sql`tipo_atribuicao = ANY(ARRAY['Lead Anterior','Lead Posterior'])`);
     if (input.tipo === "Sem Atribuicao") conditions.push(sql`tipo_atribuicao = 'Sem Atribuição'`);
@@ -88,7 +100,9 @@ const getVendasPage = createServerFn({ method: "POST" })
 
     const result = await db.execute(sql`
       SELECT nome, email, turma, data_matricula, valor_convertido, estado,
-             canal, tipo_atribuicao, tipo_match, match_score, match_lag_days, utm_campanha
+             canal, tipo_atribuicao, tipo_match, match_score, match_lag_days, utm_campanha,
+             curso, cidade, unidade_geradora, utm_origem, utm_midia, utm_conteudo, utm_termo,
+             origem_lead, ultima_origem_lead, canal_venda, fase, promocao, pacote, data_criacao
       FROM vendas_atribuidas
       ${where}
       ORDER BY data_matricula DESC NULLS LAST
@@ -106,7 +120,7 @@ const getJornadaByEmails = createServerFn({ method: "POST" })
       SELECT email, turma, toque_num, tipo, data_lead, dias_antes_compra,
              canal_normalizado, utm_campanha, utm_conteudo, utm_origem
       FROM jornada_normalizada
-      WHERE email = ANY(${input.emails})
+      WHERE email IN (${sql.join(input.emails.map(v => sql`${v}`), sql`, `)})
       LIMIT 1000
     `);
     return (result as any[]) as JornadaRow[];
@@ -182,6 +196,9 @@ function Vendas() {
           turmas: filters.turmas,
           estados: filters.estados,
           canais: filters.canais,
+          cursos: filters.cursos,
+          unidadesGeradoras: filters.unidadesGeradoras,
+          utmSrc: filters.utmSrc,
           search: debouncedBusca || null,
           tipo: tipoFiltro,
         },
@@ -199,6 +216,9 @@ function Vendas() {
           turmas: filters.turmas,
           estados: filters.estados,
           canais: filters.canais,
+          cursos: filters.cursos,
+          unidadesGeradoras: filters.unidadesGeradoras,
+          utmSrc: filters.utmSrc,
           search: debouncedBusca || null,
           tipo: tipoFiltro,
           pageSize: PAGE_SIZE,
@@ -344,19 +364,22 @@ function Vendas() {
                 <th className="py-2 pr-4">Canal</th>
                 <th className="py-2 pr-4">Atribuição</th>
                 <th className="py-2 pr-4">UF</th>
+                <th className="py-2 pr-4">Cidade</th>
+                <th className="py-2 pr-4">Curso</th>
+                <th className="py-2 pr-4">Unidade</th>
               </tr>
             </thead>
             <tbody>
               {loadingPage && (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-muted-foreground text-xs">
+                  <td colSpan={11} className="py-8 text-center text-muted-foreground text-xs">
                     Carregando…
                   </td>
                 </tr>
               )}
               {!loadingPage && (pageData ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-muted-foreground text-xs">
+                  <td colSpan={11} className="py-8 text-center text-muted-foreground text-xs">
                     Nenhum registro encontrado
                   </td>
                 </tr>
@@ -412,11 +435,14 @@ function Vendas() {
                         </div>
                       </td>
                       <td className="py-2.5 pr-4 text-xs text-muted-foreground">{r.estado ?? "—"}</td>
+                      <td className="py-2.5 pr-4 text-xs text-muted-foreground">{r.cidade ?? "—"}</td>
+                      <td className="py-2.5 pr-4 text-xs text-muted-foreground truncate max-w-[150px]">{r.curso ?? "—"}</td>
+                      <td className="py-2.5 pr-4 text-xs text-muted-foreground truncate max-w-[150px]">{r.unidade_geradora ?? "—"}</td>
                     </tr>
 
                     {expanded && (
                       <tr className="border-b border-border/30 bg-card/60">
-                        <td colSpan={8} className="px-8 py-3">
+                        <td colSpan={11} className="px-8 py-3">
                           {leads.length === 0 ? (
                             <div className="text-xs text-muted-foreground py-1">
                               Nenhum lead registrado para esta venda.
@@ -488,6 +514,33 @@ function Vendas() {
                               </table>
                             </div>
                           )}
+
+                          {/* Marketing Details */}
+                          <div className="mt-3 pt-3 border-t border-border/30">
+                            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                              Detalhes de Marketing
+                            </div>
+                            <div className="grid grid-cols-3 gap-x-6 gap-y-1.5">
+                              {([
+                                ["Origem Lead", r.origem_lead],
+                                ["Ultima Origem", r.ultima_origem_lead],
+                                ["UTM Source", r.utm_origem],
+                                ["UTM Medium", r.utm_midia],
+                                ["UTM Content", r.utm_conteudo],
+                                ["UTM Term", r.utm_termo],
+                                ["Canal Venda", r.canal_venda],
+                                ["Fase", r.fase],
+                                ["Promocao", r.promocao],
+                                ["Pacote", r.pacote],
+                                ["Unidade Geradora", r.unidade_geradora],
+                              ] as [string, any][]).map(([label, value]) => (
+                                <div key={label} className="flex flex-col">
+                                  <span className="text-[10px] text-muted-foreground">{label}</span>
+                                  <span className="text-xs truncate" title={value ?? ""}>{value || "—"}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                         </td>
                       </tr>
                     )}

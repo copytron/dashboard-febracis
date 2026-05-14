@@ -1,4 +1,5 @@
-import type { RegraClassificacao, Condicao } from "./regras.types";
+import type { RegraClassificacao, Condicao, CondicaoSubGroup } from "./regras.types";
+import { normalizeConfig } from "./regras.types";
 import { deriveCanal, type CanalInput } from "./canal";
 
 type EvalRecord = {
@@ -26,6 +27,14 @@ function evalCondicao(cond: Condicao, record: EvalRecord): boolean {
   }
 }
 
+function evalGrupo(grupo: CondicaoSubGroup, record: EvalRecord): boolean {
+  if (!grupo.condicoes?.length) return false;
+  const results = grupo.condicoes.map((c) => evalCondicao(c, record));
+  return grupo.logica === "AND"
+    ? results.every(Boolean)
+    : results.some(Boolean);
+}
+
 /**
  * Deriva o canal usando regras customizáveis.
  * Itera em ordem de prioridade (menor = primeiro).
@@ -40,14 +49,13 @@ export function deriveCanalDinamico(
     .sort((a, b) => a.prioridade - b.prioridade);
 
   for (const regra of sorted) {
-    const group = regra.config;
-    if (!group?.condicoes?.length) continue;
+    const { logica_grupos, grupos } = normalizeConfig(regra.config);
+    if (!grupos.length) continue;
 
-    const results = group.condicoes.map((c) => evalCondicao(c, record));
-    const match =
-      group.logica === "AND"
-        ? results.every(Boolean)
-        : results.some(Boolean);
+    const groupResults = grupos.map((g) => evalGrupo(g, record));
+    const match = logica_grupos === "AND"
+      ? groupResults.every(Boolean)
+      : groupResults.some(Boolean);
 
     if (match) return regra.canal;
   }

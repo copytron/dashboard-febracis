@@ -4,18 +4,19 @@ import { db } from "@/db/client";
 import { sql } from "drizzle-orm";
 import { useFilters } from "@/lib/filters";
 import { CANAIS_LIST } from "@/lib/format";
-
-const getFilterOptions = createServerFn({ method: "GET" }).handler(async () => {
-  const result = await db.execute(
-    sql`SELECT DISTINCT turma, estado FROM vendas_atribuidas WHERE turma IS NOT NULL OR estado IS NOT NULL LIMIT 3000`
-  );
-  return result as unknown as { turma: string | null; estado: string | null }[];
-});
+import { DateRangePicker } from "./DateRangePicker";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Check, ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const getFilterOptions = createServerFn({ method: "GET" }).handler(async () => {
+  const result = await db.execute(
+    sql`SELECT DISTINCT turma, estado, curso, unidade_geradora, utm_src FROM vendas_atribuidas WHERE turma IS NOT NULL OR estado IS NOT NULL LIMIT 5000`
+  );
+  return result as unknown as { turma: string | null; estado: string | null; curso: string | null; unidade_geradora: string | null; utm_src: string | null }[];
+});
 
 function MultiSelect({
   label,
@@ -101,37 +102,48 @@ export function GlobalFilters() {
   const { filters, setFilters, reset } = useFilters();
   const [turmas, setTurmas] = useState<string[]>([]);
   const [estados, setEstados] = useState<string[]>([]);
+  const [cursos, setCursos] = useState<string[]>([]);
+  const [unidadesGeradoras, setUnidadesGeradoras] = useState<string[]>([]);
+  const [utmSrcOptions, setUtmSrcOptions] = useState<string[]>([]);
   const canais = [...CANAIS_LIST];
 
   useEffect(() => {
     getFilterOptions().then((data) => {
       const t = Array.from(new Set(data.map((r) => r.turma).filter(Boolean))).sort();
       const e = Array.from(new Set(data.map((r) => r.estado).filter(Boolean))).sort();
+      const c = Array.from(new Set(data.map((r) => r.curso).filter(Boolean))).sort();
+      const u = Array.from(new Set(data.map((r) => r.unidade_geradora).filter(Boolean))).sort();
+      const s = Array.from(new Set(data.map((r) => r.utm_src).filter(Boolean))).sort();
       setTurmas(t as string[]);
       setEstados(e as string[]);
+      setCursos(c as string[]);
+      setUnidadesGeradoras(u as string[]);
+      setUtmSrcOptions(s as string[]);
     });
   }, []);
 
   const hasFilters =
-    filters.dateFrom || filters.dateTo || filters.turmas.length || filters.estados.length || filters.canais.length;
+    filters.dateFrom || filters.dateTo || filters.turmas.length || filters.estados.length || filters.canais.length || filters.cursos.length || filters.unidadesGeradoras.length || filters.utmSrc.length;
 
   return (
     <div data-tour="filters" className="flex flex-wrap items-center gap-2 mb-6 p-3 rounded-xl border border-border bg-card/50">
-      <div className="flex items-center gap-1.5">
-        <Input
-          type="date"
-          value={filters.dateFrom ?? ""}
-          onChange={(e) => setFilters({ dateFrom: e.target.value || null })}
-          className="h-9 w-[150px] text-xs bg-card"
-        />
-        <span className="text-xs text-muted-foreground">até</span>
-        <Input
-          type="date"
-          value={filters.dateTo ?? ""}
-          onChange={(e) => setFilters({ dateTo: e.target.value || null })}
-          className="h-9 w-[150px] text-xs bg-card"
-        />
-      </div>
+      <DateRangePicker
+        dateFrom={filters.dateFrom}
+        dateTo={filters.dateTo}
+        onChange={(from, to) => setFilters({ dateFrom: from, dateTo: to })}
+      />
+      <MultiSelect
+        label="Unidade Geradora"
+        options={unidadesGeradoras}
+        selected={filters.unidadesGeradoras}
+        onChange={(v) => setFilters({ unidadesGeradoras: v })}
+      />
+      <MultiSelect
+        label="Canal"
+        options={canais}
+        selected={filters.canais}
+        onChange={(v) => setFilters({ canais: v })}
+      />
       <MultiSelect
         label="Turma"
         options={turmas}
@@ -145,10 +157,16 @@ export function GlobalFilters() {
         onChange={(v) => setFilters({ estados: v })}
       />
       <MultiSelect
-        label="Canal"
-        options={canais}
-        selected={filters.canais}
-        onChange={(v) => setFilters({ canais: v })}
+        label="Curso"
+        options={cursos}
+        selected={filters.cursos}
+        onChange={(v) => setFilters({ cursos: v })}
+      />
+      <MultiSelect
+        label="SRC (Setor)"
+        options={utmSrcOptions}
+        selected={filters.utmSrc}
+        onChange={(v) => setFilters({ utmSrc: v })}
       />
       {hasFilters && (
         <Button variant="ghost" size="sm" onClick={reset} className="h-9 text-xs">

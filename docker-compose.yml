@@ -5,6 +5,7 @@ services:
       DATABASE_URL: postgresql://febracis:Febr%40cis%40melhor@postgres:5432/Postgres_Febracis
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       BETTER_AUTH_URL: https://dashboard-febracis.fluq.com.br
+      WINDSOR_API_KEY: ${WINDSOR_API_KEY}
       NODE_ENV: production
     networks:
       - network_swarm_public

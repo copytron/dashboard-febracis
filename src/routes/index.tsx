@@ -8,7 +8,7 @@ import { useFilters } from "@/lib/filters";
 import { PageHeader, Card } from "@/components/dashboard/PageHeader";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { GlobalFilters } from "@/components/dashboard/GlobalFilters";
-import { channelColor, fmtBRL, fmtBRLFull, fmtNum, fmtPct, TIPO_BADGE } from "@/lib/format";
+import { channelColor, fmtBRL, fmtBRLFull, fmtNum, fmtPct } from "@/lib/format";
 import {
   ResponsiveContainer,
   BarChart,
@@ -41,6 +41,9 @@ type FiltersInput = {
   turmas?: string[];
   estados?: string[];
   canais?: string[];
+  cursos?: string[];
+  unidadesGeradoras?: string[];
+  utmSrc?: string[];
 };
 
 type Row = {
@@ -57,9 +60,12 @@ const getOverviewData = createServerFn({ method: "GET" })
     const conditions: SQL[] = [];
     if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
     if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
-    if (input.turmas?.length) conditions.push(sql`turma = ANY(${input.turmas})`);
-    if (input.estados?.length) conditions.push(sql`estado = ANY(${input.estados})`);
-    if (input.canais?.length) conditions.push(sql`canal = ANY(${input.canais})`);
+    if (input.turmas?.length) conditions.push(sql`turma IN (${sql.join(input.turmas.map(v => sql`${v}`), sql`, `)})`);
+    if (input.estados?.length) conditions.push(sql`estado IN (${sql.join(input.estados.map(v => sql`${v}`), sql`, `)})`);
+    if (input.canais?.length) conditions.push(sql`canal IN (${sql.join(input.canais.map(v => sql`${v}`), sql`, `)})`);
+    if (input.cursos?.length) conditions.push(sql`curso IN (${sql.join(input.cursos.map(v => sql`${v}`), sql`, `)})`);
+    if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
+    if (input.utmSrc?.length) conditions.push(sql`utm_src IN (${sql.join(input.utmSrc.map(v => sql`${v}`), sql`, `)})`);
     const where = conditions.length > 0
       ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
       : sql``;
@@ -82,6 +88,9 @@ function Overview() {
           turmas: filters.turmas,
           estados: filters.estados,
           canais: filters.canais,
+          cursos: filters.cursos,
+          unidadesGeradoras: filters.unidadesGeradoras,
+          utmSrc: filters.utmSrc,
         },
       }),
   });
@@ -101,7 +110,7 @@ function Overview() {
     tipoMap[t].vendas += 1;
     tipoMap[t].receita += Number(r.valor_convertido ?? 0);
 
-    const c = r.canal || "Sem Atribuição";
+    const c = r.canal || "Outros";
     canalMap[c] = canalMap[c] || { vendas: 0, receita: 0, tipo: t };
     canalMap[c].vendas += 1;
     canalMap[c].receita += Number(r.valor_convertido ?? 0);
@@ -147,17 +156,6 @@ function Overview() {
     return Object.entries(m).sort().map(([mes, receita]) => ({ mes, receita }));
   }, [rows]);
 
-  const topEstados = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const r of rows) {
-      if (!r.estado) continue;
-      m[r.estado] = (m[r.estado] ?? 0) + Number(r.valor_convertido ?? 0);
-    }
-    return Object.entries(m)
-      .map(([estado, receita]) => ({ estado, receita }))
-      .sort((a, b) => b.receita - a.receita)
-      .slice(0, 10);
-  }, [rows]);
 
   return (
     <>
@@ -168,7 +166,7 @@ function Overview() {
       />
       <GlobalFilters />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <KpiCard label="Receita Total" value={fmtBRLFull(receitaTotal)} accent="#6366f1" loading={isLoading} />
         <KpiCard label="Total de Vendas" value={fmtNum(totalVendas)} accent="#8b5cf6" loading={isLoading} />
         <KpiCard label="Ticket Médio" value={fmtBRLFull(ticket)} accent="#a78bfa" loading={isLoading} />
@@ -183,6 +181,10 @@ function Overview() {
           accent="#4ade80"
           loading={isLoading}
         />
+        <KpiCard label="Total Leads" value="—" accent="#22d3ee" loading={false} />
+        <KpiCard label="Investimento" value="—" accent="#f59e0b" loading={false} />
+        <KpiCard label="ROAS" value="—" accent="#10b981" loading={false} />
+        <KpiCard label="CPA" value="—" accent="#f43f5e" loading={false} />
       </div>
 
       <Card title="Cobertura de atribuição" className="mb-6">
@@ -295,58 +297,6 @@ function Overview() {
         </Card>
       </div>
 
-      <Card title="Top 10 estados por receita" className="mb-6">
-        <div className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={topEstados} layout="vertical" margin={{ left: 40, right: 20, top: 10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e2535" />
-              <XAxis type="number" stroke="#9ca3af" tick={{ fontSize: 11 }} tickFormatter={(v) => fmtBRL(v)} />
-              <YAxis dataKey="estado" type="category" stroke="#9ca3af" tick={{ fontSize: 11 }} width={40} />
-              <Tooltip
-                contentStyle={{ background: "#161b27", border: "1px solid #1e2535", borderRadius: 8, fontSize: 12 }}
-                formatter={(v: any) => [fmtBRLFull(Number(v)), "Receita"]}
-              />
-              <Bar dataKey="receita" fill="#6366f1" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </Card>
-
-      <Card title="Detalhamento por Canal">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-muted-foreground uppercase tracking-wider border-b border-border">
-                <th className="py-2 pr-4">Canal</th>
-                <th className="py-2 pr-4 text-right">Vendas</th>
-                <th className="py-2 pr-4 text-right">Receita</th>
-                <th className="py-2 pr-4 text-right">Ticket Médio</th>
-                <th className="py-2 pr-4 text-right">% do Total</th>
-                <th className="py-2 pr-4">Tipo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {canalRows.map((r) => (
-                <tr key={r.canal} className="border-b border-border/50 last:border-0">
-                  <td className="py-3 pr-4 font-medium">
-                    <span className="flex items-center gap-2">
-                      <span className="size-2.5 rounded-sm" style={{ background: channelColor(r.canal) }} />
-                      {r.canal}
-                    </span>
-                  </td>
-                  <td className="py-3 pr-4 text-right">{fmtNum(r.vendas)}</td>
-                  <td className="py-3 pr-4 text-right font-semibold">{fmtBRLFull(r.receita)}</td>
-                  <td className="py-3 pr-4 text-right">{fmtBRLFull(r.ticket)}</td>
-                  <td className="py-3 pr-4 text-right text-muted-foreground">{fmtPct(r.pct)}</td>
-                  <td className="py-3 pr-4">
-                    <span className={`text-[10px] px-2 py-0.5 rounded ${TIPO_BADGE[r.tipo] ?? ""}`}>{r.tipo}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
     </>
   );
 }

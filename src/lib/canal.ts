@@ -14,7 +14,7 @@ const norm = (s?: string | null) => (s ?? "").toString().trim();
 
 export function deriveCanal(input: CanalInput): string {
   const fonte = norm(input.ultima_origem_lead) || norm(input.origem_lead);
-  if (!fonte) return "Sem Atribuição";
+  if (!fonte) return "Outros";
   const f = fonte.toLowerCase();
 
   if (/(youtube|\[yt\]|\byt\b|iex app)/.test(f)) return "YouTube";
@@ -22,6 +22,6 @@ export function deriveCanal(input: CanalInput): string {
   if (/(social seller|\bss\b|ss mcis|ss pv|ss cv|indica|indicação|aluno cis|ex-aluno|ex aluno|stand cis|ativação comercial|avalon - social|cliente base)/.test(f)) return "Redes";
   if (/(\[fb\]|\[go\]|\[cm\]|\[ck\]|\[lp\]|\[vsl\]|\[pgven\]|form - meta|meta lead ads|tráfego|trafego|lead tra|\bads\b|typeform|^lp |lp -|masterclass|meteorico|meteórico|mulheres experience|ia mcis|ia avalon|black november|black friday|pre-venda|live pv|fbcis)/.test(f)) return "Mídia";
   if (/(\[org\]|orgânico|organico|organic|\bseo\b|\bsite\b)/.test(f)) return "Orgânicos";
-  if (/(pedido|cortesia|bonux|bônus|bonus|transferido|checkout|base dksoft|lista de espera)/.test(f)) return "Operacional";
+  if (/(pedido|cortesia|bonux|bônus|bonus|transferido|checkout|base dksoft|lista de espera)/.test(f)) return "Outros";
   return "Outros";
 }

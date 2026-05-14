@@ -28,6 +28,9 @@ type FiltersInput = {
   turmas?: string[];
   estados?: string[];
   canais?: string[];
+  cursos?: string[];
+  unidadesGeradoras?: string[];
+  utmSrc?: string[];
 };
 
 type Row = {
@@ -45,9 +48,12 @@ const getTurmasData = createServerFn({ method: "GET" })
     const conditions: SQL[] = [];
     if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
     if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
-    if (input.turmas?.length) conditions.push(sql`turma = ANY(${input.turmas})`);
-    if (input.estados?.length) conditions.push(sql`estado = ANY(${input.estados})`);
-    if (input.canais?.length) conditions.push(sql`canal = ANY(${input.canais})`);
+    if (input.turmas?.length) conditions.push(sql`turma IN (${sql.join(input.turmas.map(v => sql`${v}`), sql`, `)})`);
+    if (input.estados?.length) conditions.push(sql`estado IN (${sql.join(input.estados.map(v => sql`${v}`), sql`, `)})`);
+    if (input.canais?.length) conditions.push(sql`canal IN (${sql.join(input.canais.map(v => sql`${v}`), sql`, `)})`);
+    if (input.cursos?.length) conditions.push(sql`curso IN (${sql.join(input.cursos.map(v => sql`${v}`), sql`, `)})`);
+    if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
+    if (input.utmSrc?.length) conditions.push(sql`utm_src IN (${sql.join(input.utmSrc.map(v => sql`${v}`), sql`, `)})`);
     const where = conditions.length > 0
       ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
       : sql``;
@@ -57,17 +63,15 @@ const getTurmasData = createServerFn({ method: "GET" })
     return result as unknown as Row[];
   });
 
-function parseTurma(t: string): { ano: string; cidade: string } {
+function parseTurma(t: string): { cidade: string } {
   // Format: "2026 - CIS248 - São Paulo"
   const parts = t.split(" - ");
-  const ano = parts[0]?.trim() ?? "";
   const cidade = parts.slice(2).join(" - ").trim() || parts[1]?.trim() || "";
-  return { ano, cidade };
+  return { cidade };
 }
 
 function Turmas() {
   const { filters } = useFilters();
-  const [anoFilter, setAnoFilter] = useState<string>("");
   const [cidadeFilter, setCidadeFilter] = useState<string>("");
   const [openTurma, setOpenTurma] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<"receita" | "vendas" | "ticket">("receita");
@@ -88,6 +92,9 @@ function Turmas() {
           turmas: filters.turmas,
           estados: filters.estados,
           canais: filters.canais,
+          cursos: filters.cursos,
+          unidadesGeradoras: filters.unidadesGeradoras,
+          utmSrc: filters.utmSrc,
         },
       }),
   });
@@ -105,11 +112,10 @@ function Turmas() {
     }
     return Object.entries(m)
       .map(([turma, v]) => {
-        const { ano, cidade } = parseTurma(turma);
+        const { cidade } = parseTurma(turma);
         const dom = Object.entries(v.canalCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—";
         return {
           turma,
-          ano,
           cidade,
           vendas: v.vendas,
           receita: v.receita,
@@ -117,18 +123,12 @@ function Turmas() {
           canal: dom,
         };
       })
-      .filter((t) => (anoFilter ? t.ano === anoFilter : true))
       .filter((t) => (cidadeFilter ? t.cidade.toLowerCase().includes(cidadeFilter.toLowerCase()) : true))
       .sort((a, b) => {
         const diff = a[sortKey] - b[sortKey];
         return sortDir === "desc" ? -diff : diff;
       });
-  }, [rows, anoFilter, cidadeFilter]);
-
-  const anos = useMemo(() => {
-    const set = new Set(rows.map((r) => parseTurma(r.turma).ano).filter(Boolean));
-    return Array.from(set).sort();
-  }, [rows]);
+  }, [rows, cidadeFilter]);
 
   const detail = useMemo(() => {
     if (!openTurma) return null;
@@ -162,16 +162,6 @@ function Turmas() {
       <Card className="mb-6">
         <div className="flex flex-wrap gap-3 items-center">
           <div className="text-xs text-muted-foreground">Filtros locais:</div>
-          <select
-            value={anoFilter}
-            onChange={(e) => setAnoFilter(e.target.value)}
-            className="h-9 px-3 text-xs rounded-md border border-border bg-card text-foreground"
-          >
-            <option value="">Todos os anos</option>
-            {anos.map((a) => (
-              <option key={a} value={a}>{a}</option>
-            ))}
-          </select>
           <Input
             placeholder="Buscar cidade..."
             value={cidadeFilter}
@@ -188,7 +178,6 @@ function Turmas() {
             <thead>
               <tr className="text-left text-xs text-muted-foreground uppercase tracking-wider border-b border-border">
                 <th className="py-2 pr-4">Turma</th>
-                <th className="py-2 pr-4">Ano</th>
                 <th className="py-2 pr-4">Cidade</th>
                 <th className="py-2 pr-4 text-right cursor-pointer select-none hover:text-foreground transition" onClick={() => toggleSort("vendas")}>
                   Vendas {sortKey === "vendas" ? (sortDir === "desc" ? "↓" : "↑") : ""}
@@ -204,7 +193,7 @@ function Turmas() {
             </thead>
             <tbody>
               {isLoading && (
-                <tr><td colSpan={7} className="py-8 text-center text-muted-foreground text-xs">Carregando…</td></tr>
+                <tr><td colSpan={6} className="py-8 text-center text-muted-foreground text-xs">Carregando…</td></tr>
               )}
               {turmas.map((t) => (
                 <tr
@@ -213,7 +202,6 @@ function Turmas() {
                   className="border-b border-border/40 last:border-0 cursor-pointer hover:bg-accent/40 transition"
                 >
                   <td className="py-3 pr-4 font-medium">{t.turma}</td>
-                  <td className="py-3 pr-4 text-muted-foreground">{t.ano}</td>
                   <td className="py-3 pr-4 text-muted-foreground">{t.cidade}</td>
                   <td className="py-3 pr-4 text-right">{fmtNum(t.vendas)}</td>
                   <td className="py-3 pr-4 text-right font-semibold">{fmtBRLFull(t.receita)}</td>

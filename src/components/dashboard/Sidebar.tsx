@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Radio, GraduationCap, Tag, MapPin, ShoppingCart, Upload, User, Database, ChevronLeft, ChevronRight, Network, ShieldCheck, Settings, GitMerge } from "lucide-react";
+import { LayoutDashboard, Radio, GraduationCap, Tag, MapPin, ShoppingCart, User, ChevronLeft, ChevronRight, Settings, GitMerge, Users, DollarSign, Megaphone, Search } from "lucide-react";
 
 type Item = { to: string; label: string; icon: any; badge?: string };
 type Section = { title: string | null; items: Item[] };
@@ -16,6 +16,7 @@ const sections: Section[] = [
     title: "Resultados",
     items: [
       { to: "/vendas", label: "Vendas", icon: ShoppingCart },
+      { to: "/leads", label: "Leads", icon: Users },
       { to: "/turmas", label: "Turmas", icon: GraduationCap },
       { to: "/geografia", label: "Geografia", icon: MapPin },
     ],
@@ -29,18 +30,17 @@ const sections: Section[] = [
     ],
   },
   {
-    title: "BI",
+    title: "Mídia Paga",
     items: [
-      { to: "/app/workspaces", label: "Workspaces", icon: Network, badge: "beta" },
-      { to: "/modelo", label: "Modelo (legacy)", icon: Database },
+      { to: "/midia", label: "Mídia Unificada", icon: DollarSign },
+      { to: "/meta-ads", label: "Meta Ads", icon: Megaphone },
+      { to: "/google-ads", label: "Google Ads", icon: Search },
     ],
   },
   {
     title: "Admin",
     items: [
-      { to: "/auditoria", label: "Auditoria", icon: ShieldCheck },
       { to: "/admin/cadastros", label: "Cadastros", icon: Settings },
-      { to: "/admin/import", label: "Importar planilha", icon: Upload },
       { to: "/conta", label: "Minha conta", icon: User },
     ],
   },

@@ -261,7 +261,7 @@ export const listRelationshipsFn = createServerFn({ method: "POST" })
                config->>'to_col' AS to_col,
                (config->>'ord')::int AS ord
         FROM relationship_columns
-        WHERE relationship_id = ANY(${ids})
+        WHERE relationship_id IN (${sql.join(ids.map(v => sql`${v}`), sql`, `)})
         ORDER BY (config->>'ord')::int
       `);
       cols = (colResult as any[]).map((c: any) => ({

@@ -32,6 +32,8 @@ export const Route = createFileRoute("/atribuicao")({
 type FiltersInput = {
   dateFrom?: string | null;
   dateTo?: string | null;
+  canais?: string[];
+  unidadesGeradoras?: string[];
 };
 
 // --- Server functions ---
@@ -44,6 +46,8 @@ const getTouchpointDistribution = createServerFn({ method: "GET" })
     const conditions: SQL[] = [];
     if (input.dateFrom) conditions.push(sql`data_lead >= ${input.dateFrom}`);
     if (input.dateTo) conditions.push(sql`data_lead <= ${input.dateTo}`);
+    if (input.canais?.length) conditions.push(sql`canal_normalizado IN (${sql.join(input.canais.map(v => sql`${v}`), sql`, `)})`);
+    if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
     const where = conditions.length > 0
       ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
       : sql``;
@@ -71,6 +75,8 @@ const getCanalPorPosicao = createServerFn({ method: "GET" })
     const conditions: SQL[] = [];
     if (input.dateFrom) conditions.push(sql`data_lead >= ${input.dateFrom}`);
     if (input.dateTo) conditions.push(sql`data_lead <= ${input.dateTo}`);
+    if (input.canais?.length) conditions.push(sql`canal_normalizado IN (${sql.join(input.canais.map(v => sql`${v}`), sql`, `)})`);
+    if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
     const where = conditions.length > 0
       ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
       : sql``;
@@ -92,6 +98,8 @@ const getTopUtms = createServerFn({ method: "GET" })
     const conditions: SQL[] = [sql`utm_campanha IS NOT NULL`];
     if (input.dateFrom) conditions.push(sql`data_lead >= ${input.dateFrom}`);
     if (input.dateTo) conditions.push(sql`data_lead <= ${input.dateTo}`);
+    if (input.canais?.length) conditions.push(sql`canal_normalizado IN (${sql.join(input.canais.map(v => sql`${v}`), sql`, `)})`);
+    if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
     const where = sql`WHERE ${sql.join(conditions, sql` AND `)}`;
     const result = await db.execute(sql`
       SELECT utm_campanha, canal_normalizado AS canal, COUNT(*)::int AS toques
@@ -115,7 +123,7 @@ const TIPO_COLORS: Record<string, string> = {
 
 function Atribuicao() {
   const { filters } = useFilters();
-  const filterInput = { dateFrom: filters.dateFrom, dateTo: filters.dateTo };
+  const filterInput = { dateFrom: filters.dateFrom, dateTo: filters.dateTo, canais: filters.canais, unidadesGeradoras: filters.unidadesGeradoras };
 
   const { data: touchpoints, isLoading: loadingTp } = useQuery({
     queryKey: ["atribuicao-touchpoints", filterInput],

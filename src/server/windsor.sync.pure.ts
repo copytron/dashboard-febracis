@@ -39,6 +39,11 @@ const OPP_FIELDS = [
   "opportunity_pacote_comp__c",
   "opportunity_nomecurso__c",
   "opportunity_leadorigem__c",
+  "opportunity_c_digo_do_curso__c",
+  "opportunity_account_name",
+  "opportunity_codigodaunidadegeradora__c",
+  "opportunity_unidade_geradora_venda__c",
+  "opportunity_utm_src__c",
 ].join(",");
 
 const LEAD_FIELDS = [
@@ -57,6 +62,7 @@ const LEAD_FIELDS = [
   "lead_utm_content__c",
   "lead_utm_term__c",
   "lead_page_url__c",
+  "lead_utm_src__c",
 ].join(",");
 
 async function fetchWindsorData(
@@ -90,6 +96,14 @@ async function fetchWindsorData(
 function mapOpportunity(opp: any): any {
   const valor = Number(opp.opportunity_amount ?? 0) || 0;
   const valorFinal = Number(opp.opportunity_valorfinal__c ?? 0) || 0;
+
+  // Compor unidade_geradora no formato "ID - Nome"
+  const ugCodigo = (opp.opportunity_codigodaunidadegeradora__c ?? "").toString().trim();
+  const ugNome   = (opp.opportunity_unidade_geradora_venda__c ?? opp.opportunity_account_name ?? "").toString().trim();
+  const unidadeGeradora = ugCodigo && ugNome
+    ? `${ugCodigo} - ${ugNome}`
+    : ugNome || ugCodigo || null;
+
   return {
     id_venda:         opp.opportunity_id,
     nome_venda:       opp.opportunity_name,
@@ -100,6 +114,7 @@ function mapOpportunity(opp: any): any {
     cidade:           opp.opportunity_clientecidade__c ?? null,
     turma:            opp.opportunity_turma__c ?? null,
     curso:            opp.opportunity_nomecurso__c ?? null,
+    codigo_curso:     opp.opportunity_c_digo_do_curso__c ?? null,
     fase:             opp.opportunity_stage_name ?? null,
     valor:            valor,
     valor_convertido: valorFinal > 0 ? valorFinal : valor,
@@ -114,9 +129,11 @@ function mapOpportunity(opp: any): any {
     utm_campaign:     opp.opportunity_utm_campaign__c ?? null,
     utm_content:      opp.opportunity_utm_content__c ?? null,
     utm_term:         opp.opportunity_utm_term__c ?? null,
+    utm_src:          opp.opportunity_utm_src__c ?? null,
     data_matricula:   opp.opportunity_close_date ?? null,
     data_criacao:     opp.opportunity_created_date ?? null,
     data_aprovacao:   opp.opportunity_data_de_aprova_o__c ?? null,
+    unidade_geradora: unidadeGeradora,
     source:           "windsor_salesforce",
   };
 }
@@ -138,6 +155,7 @@ function mapLead(lead: any): any {
     utm_content: lead.lead_utm_content__c ?? null,
     utm_term:    lead.lead_utm_term__c ?? null,
     url_cadastro: lead.lead_page_url__c ?? null,
+    utm_src:     lead.lead_utm_src__c ?? null,
     source:      "windsor_salesforce",
   };
 }

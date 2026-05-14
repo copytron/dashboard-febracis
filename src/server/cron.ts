@@ -30,5 +30,37 @@ export function startCronJobs() {
     }
   });
 
+  // Sync Meta Ads e Google Ads a cada 6 horas
+  cron.schedule("0 3,9,15,21 * * *", async () => {
+    console.log("[cron] Iniciando sync Ads (Meta + Google)...");
+    try {
+      const apiKey = process.env.WINDSOR_API_KEY;
+      if (!apiKey) {
+        console.warn("[cron] WINDSOR_API_KEY não configurada, pulando sync Ads");
+        return;
+      }
+      const { syncMetaAds, syncGoogleAds } = await import("./windsor.ads.sync");
+      const today = new Date().toISOString().slice(0, 10);
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+
+      try {
+        const meta = await syncMetaAds(thirtyDaysAgo, today);
+        console.log("[cron] Meta Ads sync:", JSON.stringify(meta));
+      } catch (e: any) {
+        console.error("[cron] Meta Ads sync falhou:", e.message);
+      }
+
+      try {
+        const google = await syncGoogleAds(thirtyDaysAgo, today);
+        console.log("[cron] Google Ads sync:", JSON.stringify(google));
+      } catch (e: any) {
+        console.error("[cron] Google Ads sync falhou:", e.message);
+      }
+    } catch (err) {
+      console.error("[cron] Sync Ads falhou:", err);
+    }
+  });
+
   console.log("[cron] Agendado: Windsor sync a cada 12h (00:00 e 12:00)");
+  console.log("[cron] Agendado: Ads sync a cada 6h (03:00, 09:00, 15:00, 21:00)");
 }

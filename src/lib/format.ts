@@ -29,12 +29,10 @@ export const CHANNEL_COLORS: Record<string, string> = {
   YouTube: "#ef4444",
   Redes: "#f59e0b",
   "Orgânicos": "#22c55e",
-  Operacional: "#a855f7",
   Outros: "#64748b",
-  "Sem Atribuição": "#374151",
 };
 
-export const CANAIS_LIST = ["Mídia", "CRM", "YouTube", "Redes", "Orgânicos", "Operacional", "Outros", "Sem Atribuição"] as const;
+export const CANAIS_LIST = ["Mídia", "CRM", "YouTube", "Redes", "Orgânicos", "Outros"] as const;
 
 export const channelColor = (c: string) => CHANNEL_COLORS[c] ?? "#6b7280";
 

@@ -27,6 +27,10 @@ type FiltersInput = {
   turmas?: string[];
   estados?: string[];
   canais?: string[];
+  cursos?: string[];
+  unidadesGeradoras?: string[];
+  utmSrc?: string[];
+  year?: string | null;
 };
 
 type Row = {
@@ -42,9 +46,13 @@ const getGeografiaData = createServerFn({ method: "GET" })
     const conditions: SQL[] = [];
     if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
     if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
-    if (input.turmas?.length) conditions.push(sql`turma = ANY(${input.turmas})`);
-    if (input.estados?.length) conditions.push(sql`estado = ANY(${input.estados})`);
-    if (input.canais?.length) conditions.push(sql`canal = ANY(${input.canais})`);
+    if (input.turmas?.length) conditions.push(sql`turma IN (${sql.join(input.turmas.map(v => sql`${v}`), sql`, `)})`);
+    if (input.estados?.length) conditions.push(sql`estado IN (${sql.join(input.estados.map(v => sql`${v}`), sql`, `)})`);
+    if (input.canais?.length) conditions.push(sql`canal IN (${sql.join(input.canais.map(v => sql`${v}`), sql`, `)})`);
+    if (input.cursos?.length) conditions.push(sql`curso IN (${sql.join(input.cursos.map(v => sql`${v}`), sql`, `)})`);
+    if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
+    if (input.utmSrc?.length) conditions.push(sql`utm_src IN (${sql.join(input.utmSrc.map(v => sql`${v}`), sql`, `)})`);
+    if (input.year) conditions.push(sql`EXTRACT(YEAR FROM data_matricula) = ${Number(input.year)}`);
     const where = conditions.length > 0
       ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
       : sql``;
@@ -58,9 +66,10 @@ function Geografia() {
   const { filters } = useFilters();
   const [sortKey, setSortKey] = useState<"receita" | "vendas" | "ticket">("receita");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [year, setYear] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["geografia-all", filters],
+    queryKey: ["geografia-all", filters, year],
     queryFn: () =>
       getGeografiaData({
         data: {
@@ -69,6 +78,10 @@ function Geografia() {
           turmas: filters.turmas,
           estados: filters.estados,
           canais: filters.canais,
+          cursos: filters.cursos,
+          unidadesGeradoras: filters.unidadesGeradoras,
+          utmSrc: filters.utmSrc,
+          year,
         },
       }),
   });
@@ -152,6 +165,31 @@ function Geografia() {
       <PageHeader title="Geografia" subtitle="Performance de vendas por estado e cidade" tutorialKey="geografia" />
       <GlobalFilters />
 
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-xs text-muted-foreground font-medium">Ano:</span>
+        {["2024", "2025", "2026"].map((y) => (
+          <button
+            key={y}
+            onClick={() => setYear(year === y ? null : y)}
+            className={`px-3 py-1 text-xs rounded-md border transition ${
+              year === y
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-card text-muted-foreground border-border hover:border-foreground/30"
+            }`}
+          >
+            {y}
+          </button>
+        ))}
+        {year && (
+          <button
+            onClick={() => setYear(null)}
+            className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition"
+          >
+            Limpar
+          </button>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <KpiCard
           label="Estados ativos"
@@ -216,13 +254,15 @@ function Geografia() {
                 >
                   Ticket {sortKey === "ticket" ? (sortDir === "desc" ? "↓" : "↑") : ""}
                 </th>
+                <th className="py-2 pr-4 text-right">ROAS</th>
+                <th className="py-2 pr-4 text-right">CPA</th>
                 <th className="py-2 pr-4">Canal Dominante</th>
                 <th className="py-2 pr-4 text-right">% Total</th>
               </tr>
             </thead>
             <tbody>
               {isLoading && (
-                <tr><td colSpan={6} className="py-8 text-center text-muted-foreground text-xs">Carregando…</td></tr>
+                <tr><td colSpan={8} className="py-8 text-center text-muted-foreground text-xs">Carregando…</td></tr>
               )}
               {estadoRows.map((r) => (
                 <tr key={r.estado} className="border-b border-border/40 last:border-0 hover:bg-accent/20 transition">
@@ -230,6 +270,8 @@ function Geografia() {
                   <td className="py-2.5 pr-4 text-right">{fmtNum(r.vendas)}</td>
                   <td className="py-2.5 pr-4 text-right font-semibold">{fmtBRLFull(r.receita)}</td>
                   <td className="py-2.5 pr-4 text-right text-muted-foreground">{fmtBRL(r.ticket)}</td>
+                  <td className="py-2.5 pr-4 text-right text-muted-foreground">—</td>
+                  <td className="py-2.5 pr-4 text-right text-muted-foreground">—</td>
                   <td className="py-2.5 pr-4">
                     <span className="flex items-center gap-2 text-xs">
                       <span className="size-2.5 rounded-sm" style={{ background: channelColor(r.canal) }} />

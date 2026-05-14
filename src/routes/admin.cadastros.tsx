@@ -15,6 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+import { RuleBuilder } from "@/components/dashboard/RuleBuilder";
+import { useAuth } from "@/lib/auth-context";
 
 export const Route = createFileRoute("/admin/cadastros")({
   head: () => ({ meta: [{ title: "Cadastros · Febracis MKT" }] }),
@@ -196,6 +198,8 @@ function fmtBRL(v: any) {
 // ---------------------------------------------------------------------------
 
 function CadastrosPage() {
+  const { isAdmin } = useAuth();
+
   return (
     <div className="px-6 py-6 space-y-6">
       <PageHeader title="Cadastros" subtitle="Produtos, contas, edições, orçamentos e regras de classificação" tutorialKey="cadastros" />
@@ -204,12 +208,28 @@ function CadastrosPage() {
           {ENTITIES.map((e) => (
             <TabsTrigger key={e.table} value={e.table}>{e.label}</TabsTrigger>
           ))}
+          {isAdmin && <TabsTrigger value="canais">Canais</TabsTrigger>}
         </TabsList>
         {ENTITIES.map((e) => (
           <TabsContent key={e.table} value={e.table} className="mt-4">
             <EntityCrud entity={e} />
           </TabsContent>
         ))}
+        {isAdmin && (
+          <TabsContent value="canais" className="mt-4">
+            <Card>
+              <div className="p-4 border-b border-border">
+                <h3 className="text-sm font-semibold">Regras de classificação de canal</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Configure as regras que determinam a qual canal cada venda é atribuída.
+                </p>
+              </div>
+              <div className="p-4">
+                <RuleBuilder />
+              </div>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

@@ -25,8 +25,10 @@ export const Route = createFileRoute("/utms")({
 const UTM_TABS = [
   { key: "utm_campanha", label: "Campanha" },
   { key: "utm_conteudo", label: "Conteúdo" },
-  { key: "utm_origem", label: "Origem" },
-  { key: "utm_midia", label: "Mídia" },
+  { key: "utm_origem", label: "Origem (source)" },
+  { key: "utm_midia", label: "Mídia (medium)" },
+  { key: "utm_termo", label: "Termo" },
+  { key: "utm_src", label: "SRC (Setor)" },
 ] as const;
 
 type UtmKey = (typeof UTM_TABS)[number]["key"];
@@ -37,6 +39,9 @@ type FiltersInput = {
   turmas?: string[];
   estados?: string[];
   canais?: string[];
+  cursos?: string[];
+  unidadesGeradoras?: string[];
+  utmSrc?: string[];
 };
 
 type Row = {
@@ -46,6 +51,8 @@ type Row = {
   utm_conteudo: string | null;
   utm_origem: string | null;
   utm_midia: string | null;
+  utm_termo: string | null;
+  utm_src: string | null;
 };
 
 const getUtmsData = createServerFn({ method: "GET" })
@@ -54,14 +61,17 @@ const getUtmsData = createServerFn({ method: "GET" })
     const conditions: SQL[] = [];
     if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
     if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
-    if (input.turmas?.length) conditions.push(sql`turma = ANY(${input.turmas})`);
-    if (input.estados?.length) conditions.push(sql`estado = ANY(${input.estados})`);
-    if (input.canais?.length) conditions.push(sql`canal = ANY(${input.canais})`);
+    if (input.turmas?.length) conditions.push(sql`turma IN (${sql.join(input.turmas.map(v => sql`${v}`), sql`, `)})`);
+    if (input.estados?.length) conditions.push(sql`estado IN (${sql.join(input.estados.map(v => sql`${v}`), sql`, `)})`);
+    if (input.canais?.length) conditions.push(sql`canal IN (${sql.join(input.canais.map(v => sql`${v}`), sql`, `)})`);
+    if (input.cursos?.length) conditions.push(sql`curso IN (${sql.join(input.cursos.map(v => sql`${v}`), sql`, `)})`);
+    if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
+    if (input.utmSrc?.length) conditions.push(sql`utm_src IN (${sql.join(input.utmSrc.map(v => sql`${v}`), sql`, `)})`);
     const where = conditions.length > 0
       ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
       : sql``;
     const result = await db.execute(
-      sql`SELECT canal, valor_convertido, utm_campanha, utm_conteudo, utm_origem, utm_midia FROM vendas_atribuidas ${where} LIMIT 10000`
+      sql`SELECT canal, valor_convertido, utm_campanha, utm_conteudo, utm_origem, utm_midia, utm_termo, utm_src FROM vendas_atribuidas ${where} LIMIT 10000`
     );
     return result as unknown as Row[];
   });
@@ -82,6 +92,9 @@ function Utms() {
           turmas: filters.turmas,
           estados: filters.estados,
           canais: filters.canais,
+          cursos: filters.cursos,
+          unidadesGeradoras: filters.unidadesGeradoras,
+          utmSrc: filters.utmSrc,
         },
       }),
   });

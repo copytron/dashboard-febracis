@@ -6,6 +6,9 @@ export type Filters = {
   turmas: string[];
   estados: string[];
   canais: string[];
+  cursos: string[];
+  unidadesGeradoras: string[];
+  utmSrc: string[];
 };
 
 type Ctx = {
@@ -20,6 +23,9 @@ const defaultFilters: Filters = {
   turmas: [],
   estados: [],
   canais: [],
+  cursos: [],
+  unidadesGeradoras: [],
+  utmSrc: [],
 };
 
 const FiltersContext = createContext<Ctx | null>(null);

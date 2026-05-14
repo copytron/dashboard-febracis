@@ -13,7 +13,11 @@ import { Route as VendasRouteImport } from './routes/vendas'
 import { Route as UtmsRouteImport } from './routes/utms'
 import { Route as TurmasRouteImport } from './routes/turmas'
 import { Route as ModeloRouteImport } from './routes/modelo'
+import { Route as MidiaRouteImport } from './routes/midia'
+import { Route as MetaAdsRouteImport } from './routes/meta-ads'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as LeadsRouteImport } from './routes/leads'
+import { Route as GoogleAdsRouteImport } from './routes/google-ads'
 import { Route as GeografiaRouteImport } from './routes/geografia'
 import { Route as ContaRouteImport } from './routes/conta'
 import { Route as CanaisRouteImport } from './routes/canais'
@@ -46,9 +50,29 @@ const ModeloRoute = ModeloRouteImport.update({
   path: '/modelo',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MidiaRoute = MidiaRouteImport.update({
+  id: '/midia',
+  path: '/midia',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MetaAdsRoute = MetaAdsRouteImport.update({
+  id: '/meta-ads',
+  path: '/meta-ads',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LeadsRoute = LeadsRouteImport.update({
+  id: '/leads',
+  path: '/leads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GoogleAdsRoute = GoogleAdsRouteImport.update({
+  id: '/google-ads',
+  path: '/google-ads',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GeografiaRoute = GeografiaRouteImport.update({
@@ -114,7 +138,11 @@ export interface FileRoutesByFullPath {
   '/canais': typeof CanaisRoute
   '/conta': typeof ContaRoute
   '/geografia': typeof GeografiaRoute
+  '/google-ads': typeof GoogleAdsRoute
+  '/leads': typeof LeadsRoute
   '/login': typeof LoginRoute
+  '/meta-ads': typeof MetaAdsRoute
+  '/midia': typeof MidiaRoute
   '/modelo': typeof ModeloRoute
   '/turmas': typeof TurmasRoute
   '/utms': typeof UtmsRoute
@@ -132,7 +160,11 @@ export interface FileRoutesByTo {
   '/canais': typeof CanaisRoute
   '/conta': typeof ContaRoute
   '/geografia': typeof GeografiaRoute
+  '/google-ads': typeof GoogleAdsRoute
+  '/leads': typeof LeadsRoute
   '/login': typeof LoginRoute
+  '/meta-ads': typeof MetaAdsRoute
+  '/midia': typeof MidiaRoute
   '/modelo': typeof ModeloRoute
   '/turmas': typeof TurmasRoute
   '/utms': typeof UtmsRoute
@@ -151,7 +183,11 @@ export interface FileRoutesById {
   '/canais': typeof CanaisRoute
   '/conta': typeof ContaRoute
   '/geografia': typeof GeografiaRoute
+  '/google-ads': typeof GoogleAdsRoute
+  '/leads': typeof LeadsRoute
   '/login': typeof LoginRoute
+  '/meta-ads': typeof MetaAdsRoute
+  '/midia': typeof MidiaRoute
   '/modelo': typeof ModeloRoute
   '/turmas': typeof TurmasRoute
   '/utms': typeof UtmsRoute
@@ -171,7 +207,11 @@ export interface FileRouteTypes {
     | '/canais'
     | '/conta'
     | '/geografia'
+    | '/google-ads'
+    | '/leads'
     | '/login'
+    | '/meta-ads'
+    | '/midia'
     | '/modelo'
     | '/turmas'
     | '/utms'
@@ -189,7 +229,11 @@ export interface FileRouteTypes {
     | '/canais'
     | '/conta'
     | '/geografia'
+    | '/google-ads'
+    | '/leads'
     | '/login'
+    | '/meta-ads'
+    | '/midia'
     | '/modelo'
     | '/turmas'
     | '/utms'
@@ -207,7 +251,11 @@ export interface FileRouteTypes {
     | '/canais'
     | '/conta'
     | '/geografia'
+    | '/google-ads'
+    | '/leads'
     | '/login'
+    | '/meta-ads'
+    | '/midia'
     | '/modelo'
     | '/turmas'
     | '/utms'
@@ -226,7 +274,11 @@ export interface RootRouteChildren {
   CanaisRoute: typeof CanaisRoute
   ContaRoute: typeof ContaRoute
   GeografiaRoute: typeof GeografiaRoute
+  GoogleAdsRoute: typeof GoogleAdsRoute
+  LeadsRoute: typeof LeadsRoute
   LoginRoute: typeof LoginRoute
+  MetaAdsRoute: typeof MetaAdsRoute
+  MidiaRoute: typeof MidiaRoute
   ModeloRoute: typeof ModeloRoute
   TurmasRoute: typeof TurmasRoute
   UtmsRoute: typeof UtmsRoute
@@ -268,11 +320,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ModeloRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/midia': {
+      id: '/midia'
+      path: '/midia'
+      fullPath: '/midia'
+      preLoaderRoute: typeof MidiaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/meta-ads': {
+      id: '/meta-ads'
+      path: '/meta-ads'
+      fullPath: '/meta-ads'
+      preLoaderRoute: typeof MetaAdsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/leads': {
+      id: '/leads'
+      path: '/leads'
+      fullPath: '/leads'
+      preLoaderRoute: typeof LeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/google-ads': {
+      id: '/google-ads'
+      path: '/google-ads'
+      fullPath: '/google-ads'
+      preLoaderRoute: typeof GoogleAdsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/geografia': {
@@ -362,7 +442,11 @@ const rootRouteChildren: RootRouteChildren = {
   CanaisRoute: CanaisRoute,
   ContaRoute: ContaRoute,
   GeografiaRoute: GeografiaRoute,
+  GoogleAdsRoute: GoogleAdsRoute,
+  LeadsRoute: LeadsRoute,
   LoginRoute: LoginRoute,
+  MetaAdsRoute: MetaAdsRoute,
+  MidiaRoute: MidiaRoute,
   ModeloRoute: ModeloRoute,
   TurmasRoute: TurmasRoute,
   UtmsRoute: UtmsRoute,

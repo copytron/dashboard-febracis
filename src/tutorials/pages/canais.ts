@@ -6,7 +6,7 @@ export const canaisTutorial: Tutorial = {
     {
       title: "Performance por Canal 📡",
       description:
-        "Compare receita, vendas e ticket médio por canal de atribuição: Mídia, CRM, Orgânicos, Redes, YouTube, Operacional, etc.",
+        "Compare receita, vendas e ticket médio por canal de atribuição: Mídia, CRM, Orgânicos, Redes, YouTube, Outros, etc.",
     },
     {
       element: "[data-tour='filters']",
