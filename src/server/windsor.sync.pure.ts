@@ -63,6 +63,8 @@ const LEAD_FIELDS = [
   "lead_utm_term__c",
   "lead_page_url__c",
   "lead_utm_src__c",
+  "lead_codigounidadegeradora__c",
+  "lead_unidadegeradora__c",
 ].join(",");
 
 async function fetchWindsorData(
@@ -97,12 +99,9 @@ function mapOpportunity(opp: any): any {
   const valor = Number(opp.opportunity_amount ?? 0) || 0;
   const valorFinal = Number(opp.opportunity_valorfinal__c ?? 0) || 0;
 
-  // Compor unidade_geradora no formato "ID - Nome"
-  const ugCodigo = (opp.opportunity_codigodaunidadegeradora__c ?? "").toString().trim();
-  const ugNome   = (opp.opportunity_unidade_geradora_venda__c ?? opp.opportunity_account_name ?? "").toString().trim();
-  const unidadeGeradora = ugCodigo && ugNome
-    ? `${ugCodigo} - ${ugNome}`
-    : ugNome || ugCodigo || null;
+  // Código numérico da unidade geradora (limpar ".0" do Salesforce)
+  const ugCodigo = (opp.opportunity_codigodaunidadegeradora__c ?? "").toString().trim().replace(/\.0$/, "");
+  const unidadeGeradora = ugCodigo && ugCodigo !== "0" ? ugCodigo : null;
 
   return {
     id_venda:         opp.opportunity_id,
@@ -139,6 +138,10 @@ function mapOpportunity(opp: any): any {
 }
 
 function mapLead(lead: any): any {
+  // Código numérico da unidade geradora (limpar ".0" do Salesforce)
+  const ugCodigo = (lead.lead_codigounidadegeradora__c ?? "").toString().trim().replace(/\.0$/, "");
+  const unidadeGeradora = ugCodigo && ugCodigo !== "0" ? ugCodigo : null;
+
   return {
     id_lead:     lead.lead_id,
     nome:        lead.lead_last_name ?? null,
@@ -156,6 +159,7 @@ function mapLead(lead: any): any {
     utm_term:    lead.lead_utm_term__c ?? null,
     url_cadastro: lead.lead_page_url__c ?? null,
     utm_src:     lead.lead_utm_src__c ?? null,
+    unidade_geradora: unidadeGeradora,
     source:      "windsor_salesforce",
   };
 }
@@ -284,6 +288,29 @@ export async function runWindsorSync(input: { dateFrom: string; dateTo?: string 
       .set({ status: "error" })
       .where(eq(planilhaImports.id, batchLead.id));
     throw new Error(`Erro ao sincronizar leads: ${err?.message ?? err}`);
+  }
+
+  // ── 3. Atualizar lookup de unidades geradoras ──────────────────────────────
+  try {
+    await db.execute(sql`
+      INSERT INTO unidade_geradora_lookup (codigo, sf_id, updated_at)
+      SELECT DISTINCT
+        data->>'unidade_geradora' AS codigo,
+        COALESCE(
+          (SELECT data->>'unidade_geradora' FROM rd_vendas rv2
+           WHERE rv2.data->>'unidade_geradora' = rv.data->>'unidade_geradora'
+           LIMIT 1),
+          ''
+        ) AS sf_id,
+        now()
+      FROM rd_vendas rv
+      WHERE data->>'unidade_geradora' IS NOT NULL
+        AND data->>'unidade_geradora' <> ''
+      ON CONFLICT (codigo) DO UPDATE
+        SET updated_at = now()
+    `);
+  } catch (_err) {
+    // Tabela pode não existir ainda (migration pendente) — não bloquear o sync
   }
 
   return {

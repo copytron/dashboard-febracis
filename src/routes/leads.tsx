@@ -46,8 +46,7 @@ const getLeadsAgg = createServerFn({ method: "POST" })
     if (input.dateTo) conditions.push(sql`(data->>'data_lead')::date <= ${input.dateTo}::date`);
     if (input.estados?.length) conditions.push(sql`data->>'estado' IN (${sql.join(input.estados.map(v => sql`${v}`), sql`, `)})`);
     if (input.canais?.length) conditions.push(sql`derive_canal_dynamic(data->>'ultima_origem_lead', data->>'origem_lead', data->>'utm_source', data->>'utm_medium', data->>'utm_campaign') IN (${sql.join(input.canais.map(v => sql`${v}`), sql`, `)})`);
-    // Leads não têm unidade_geradora — filtrar via vendas que possuem esse campo
-    if (input.unidadesGeradoras?.length) conditions.push(sql`lower(data->>'email') IN (SELECT DISTINCT lower(data->>'email') FROM rd_vendas WHERE data->>'unidade_geradora' IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)}) AND data->>'email' IS NOT NULL)`);
+    if (input.unidadesGeradoras?.length) conditions.push(sql`data->>'unidade_geradora' IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
     if (input.utmSrc?.length) conditions.push(sql`data->>'utm_src' IN (${sql.join(input.utmSrc.map(v => sql`${v}`), sql`, `)})`);
     if (input.search) conditions.push(sql`(data->>'nome' ILIKE ${"%" + input.search + "%"} OR data->>'email' ILIKE ${"%" + input.search + "%"})`);
 
@@ -75,8 +74,7 @@ const getLeadsPage = createServerFn({ method: "POST" })
     if (input.dateTo) conditions.push(sql`(data->>'data_lead')::date <= ${input.dateTo}::date`);
     if (input.estados?.length) conditions.push(sql`data->>'estado' IN (${sql.join(input.estados.map(v => sql`${v}`), sql`, `)})`);
     if (input.canais?.length) conditions.push(sql`derive_canal_dynamic(data->>'ultima_origem_lead', data->>'origem_lead', data->>'utm_source', data->>'utm_medium', data->>'utm_campaign') IN (${sql.join(input.canais.map(v => sql`${v}`), sql`, `)})`);
-    // Leads não têm unidade_geradora — filtrar via vendas que possuem esse campo
-    if (input.unidadesGeradoras?.length) conditions.push(sql`lower(data->>'email') IN (SELECT DISTINCT lower(data->>'email') FROM rd_vendas WHERE data->>'unidade_geradora' IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)}) AND data->>'email' IS NOT NULL)`);
+    if (input.unidadesGeradoras?.length) conditions.push(sql`data->>'unidade_geradora' IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
     if (input.utmSrc?.length) conditions.push(sql`data->>'utm_src' IN (${sql.join(input.utmSrc.map(v => sql`${v}`), sql`, `)})`);
     if (input.search) conditions.push(sql`(data->>'nome' ILIKE ${"%" + input.search + "%"} OR data->>'email' ILIKE ${"%" + input.search + "%"})`);
 
@@ -96,11 +94,7 @@ const getLeadsPage = createServerFn({ method: "POST" })
         data->>'utm_campaign' AS utm_campaign,
         data->>'utm_content' AS utm_content,
         data->>'utm_term' AS utm_term,
-        (SELECT rv.data->>'unidade_geradora'
-         FROM rd_vendas rv
-         WHERE lower(rv.data->>'email') = lower(pl.data->>'email')
-         ORDER BY rv.id DESC LIMIT 1
-        ) AS unidade_geradora,
+        data->>'unidade_geradora' AS unidade_geradora,
         derive_canal_dynamic(
           data->>'ultima_origem_lead',
           data->>'origem_lead',
@@ -108,7 +102,7 @@ const getLeadsPage = createServerFn({ method: "POST" })
           data->>'utm_medium',
           data->>'utm_campaign'
         ) AS canal
-      FROM planilha_leads pl
+      FROM planilha_leads
       ${where}
       ORDER BY (data->>'data_lead') DESC NULLS LAST
       LIMIT ${input.pageSize} OFFSET ${input.offset}

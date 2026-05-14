@@ -24,6 +24,7 @@ const migrations = [
   "src/db/migrations/0007_ad_spend_tables.sql",
   "src/db/migrations/0008_remove_operacional_canal.sql",
   "src/db/migrations/0009_add_utm_src.sql",
+  "src/db/migrations/0010_unidade_geradora_lookup.sql",
 ];
 
 for (const path of migrations) {
