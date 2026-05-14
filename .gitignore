@@ -25,6 +25,13 @@ dist-ssr
 .wrangler/
 .dev.vars
 
+# Arquivos de dados e mídia avulsos na raiz
+*.csv
+*.png
+*.jpg
+*.jpeg
+*.txt
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
