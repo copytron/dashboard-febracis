@@ -29,6 +29,48 @@
       "when": 1778700100000,
       "tag": "0003_derive_canal_dynamic",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1778786400000,
+      "tag": "0004_derive_canal_grupos",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778793600000,
+      "tag": "0005_turma_lookup",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778820000000,
+      "tag": "0006_add_unidade_geradora",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1778820100000,
+      "tag": "0007_ad_spend_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1778866200000,
+      "tag": "0008_remove_operacional_canal",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1778870000000,
+      "tag": "0009_add_utm_src",
+      "breakpoints": true
     }
   ]
 }
