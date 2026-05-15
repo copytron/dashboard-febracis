@@ -99,6 +99,13 @@
       "when": 1747440000000,
       "tag": "0013_fix_dedup_and_filters",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1747526400000,
+      "tag": "0014_receita_convertida_brl",
+      "breakpoints": true
     }
   ]
 }

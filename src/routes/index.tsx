@@ -53,6 +53,7 @@ type Row = {
   canal: string;
   tipo_atribuicao: string;
   valor_convertido: number;
+  receita_convertida_brl: number;
   data_matricula: string | null;
   estado: string | null;
 };
@@ -76,7 +77,7 @@ const getOverviewData = createServerFn({ method: "GET" })
       ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
       : sql``;
     const result = await db.execute(
-      sql`SELECT canal, tipo_atribuicao, valor_convertido, data_matricula, estado FROM vendas_atribuidas ${where} LIMIT 10000`
+      sql`SELECT canal, tipo_atribuicao, valor_convertido, receita_convertida_brl, data_matricula, estado FROM vendas_atribuidas ${where} LIMIT 10000`
     );
     return result as unknown as Row[];
   });
@@ -109,6 +110,7 @@ function Overview() {
   // Aggregations — vendas_atribuidas is the complete set (sem_atribuicao is a subset, not additive)
   const totalVendas = rows.length;
   const receitaTotal = rows.reduce((s, r) => s + Number(r.valor_convertido ?? 0), 0);
+  const receitaConvertida = rows.reduce((s, r) => s + Number(r.receita_convertida_brl ?? 0), 0);
   const ticket = totalVendas > 0 ? receitaTotal / totalVendas : 0;
 
   const tipoMap: Record<string, { vendas: number; receita: number }> = {};
@@ -176,9 +178,9 @@ function Overview() {
       <GlobalFilters />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <KpiCard label="Receita Total" value={fmtBRLFull(receitaTotal)} accent="#6366f1" loading={isLoading} />
         <KpiCard label="Total de Vendas" value={fmtNum(totalVendas)} accent="#8b5cf6" loading={isLoading} />
-        <KpiCard label="Ticket Médio" value={fmtBRLFull(ticket)} accent="#a78bfa" loading={isLoading} />
+        <KpiCard label="Receita Convertida" value={fmtBRLFull(receitaConvertida)} accent="#6366f1" loading={isLoading} />
+        <KpiCard label="Receita Total" value={fmtBRLFull(receitaTotal)} accent="#a78bfa" loading={isLoading} />
         <KpiCard
           label="Atribuição Identificada"
           value={
