@@ -30,6 +30,7 @@ type FiltersInput = {
   cursos?: string[];
   unidadesGeradoras?: string[];
   utmSrc?: string[];
+  canaisVenda?: string[];
   year?: string | null;
 };
 
@@ -52,6 +53,7 @@ const getGeografiaData = createServerFn({ method: "GET" })
     if (input.cursos?.length) conditions.push(sql`curso IN (${sql.join(input.cursos.map(v => sql`${v}`), sql`, `)})`);
     if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
     if (input.utmSrc?.length) conditions.push(sql`utm_src IN (${sql.join(input.utmSrc.map(v => sql`${v}`), sql`, `)})`);
+    if (input.canaisVenda?.length) conditions.push(sql`canal_venda IN (${sql.join(input.canaisVenda.map(v => sql`${v}`), sql`, `)})`);
     if (input.year) conditions.push(sql`EXTRACT(YEAR FROM data_matricula) = ${Number(input.year)}`);
     const where = conditions.length > 0
       ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
@@ -81,6 +83,7 @@ function Geografia() {
           cursos: filters.cursos,
           unidadesGeradoras: filters.unidadesGeradoras,
           utmSrc: filters.utmSrc,
+          canaisVenda: filters.canaisVenda,
           year,
         },
       }),

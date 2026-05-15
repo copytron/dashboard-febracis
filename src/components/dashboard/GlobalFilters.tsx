@@ -13,9 +13,9 @@ import { cn } from "@/lib/utils";
 
 const getFilterOptions = createServerFn({ method: "GET" }).handler(async () => {
   const result = await db.execute(
-    sql`SELECT DISTINCT turma, estado, curso, unidade_geradora, utm_src FROM vendas_atribuidas WHERE turma IS NOT NULL OR estado IS NOT NULL LIMIT 5000`
+    sql`SELECT DISTINCT turma, estado, curso, unidade_geradora, utm_src, canal_venda FROM vendas_atribuidas WHERE turma IS NOT NULL OR estado IS NOT NULL LIMIT 5000`
   );
-  return result as unknown as { turma: string | null; estado: string | null; curso: string | null; unidade_geradora: string | null; utm_src: string | null }[];
+  return result as unknown as { turma: string | null; estado: string | null; curso: string | null; unidade_geradora: string | null; utm_src: string | null; canal_venda: string | null }[];
 });
 
 function MultiSelect({
@@ -105,6 +105,7 @@ export function GlobalFilters() {
   const [cursos, setCursos] = useState<string[]>([]);
   const [unidadesGeradoras, setUnidadesGeradoras] = useState<string[]>([]);
   const [utmSrcOptions, setUtmSrcOptions] = useState<string[]>([]);
+  const [canaisVendaOptions, setCanaisVendaOptions] = useState<string[]>([]);
   const canais = [...CANAIS_LIST];
 
   useEffect(() => {
@@ -114,16 +115,18 @@ export function GlobalFilters() {
       const c = Array.from(new Set(data.map((r) => r.curso).filter(Boolean))).sort();
       const u = Array.from(new Set(data.map((r) => r.unidade_geradora).filter(Boolean))).sort();
       const s = Array.from(new Set(data.map((r) => r.utm_src).filter(Boolean))).sort();
+      const cv = Array.from(new Set(data.map((r) => r.canal_venda).filter(Boolean))).sort();
       setTurmas(t as string[]);
       setEstados(e as string[]);
       setCursos(c as string[]);
       setUnidadesGeradoras(u as string[]);
       setUtmSrcOptions(s as string[]);
+      setCanaisVendaOptions(cv as string[]);
     });
   }, []);
 
   const hasFilters =
-    filters.dateFrom || filters.dateTo || filters.turmas.length || filters.estados.length || filters.canais.length || filters.cursos.length || filters.unidadesGeradoras.length || filters.utmSrc.length;
+    filters.dateFrom || filters.dateTo || filters.turmas.length || filters.estados.length || filters.canais.length || filters.canaisVenda.length || filters.cursos.length || filters.unidadesGeradoras.length || filters.utmSrc.length;
 
   return (
     <div data-tour="filters" className="flex flex-wrap items-center gap-2 mb-6 p-3 rounded-xl border border-border bg-card/50">
@@ -139,10 +142,16 @@ export function GlobalFilters() {
         onChange={(v) => setFilters({ unidadesGeradoras: v })}
       />
       <MultiSelect
-        label="Canal"
+        label="Canal Marketing"
         options={canais}
         selected={filters.canais}
         onChange={(v) => setFilters({ canais: v })}
+      />
+      <MultiSelect
+        label="Canal Venda"
+        options={canaisVendaOptions}
+        selected={filters.canaisVenda}
+        onChange={(v) => setFilters({ canaisVenda: v })}
       />
       <MultiSelect
         label="Turma"

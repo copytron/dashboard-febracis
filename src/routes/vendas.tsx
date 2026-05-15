@@ -25,6 +25,7 @@ type VendasAggInput = {
   cursos?: string[];
   unidadesGeradoras?: string[];
   utmSrc?: string[];
+  canaisVenda?: string[];
   search?: string | null;
   tipo?: string;
 };
@@ -42,6 +43,7 @@ const getVendasAgg = createServerFn({ method: "POST" })
     if (input.cursos?.length) conditions.push(sql`curso IN (${sql.join(input.cursos.map(v => sql`${v}`), sql`, `)})`);
     if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
     if (input.utmSrc?.length) conditions.push(sql`utm_src IN (${sql.join(input.utmSrc.map(v => sql`${v}`), sql`, `)})`);
+    if (input.canaisVenda?.length) conditions.push(sql`canal_venda IN (${sql.join(input.canaisVenda.map(v => sql`${v}`), sql`, `)})`);
     if (input.search) conditions.push(sql`(nome ILIKE ${"%" + input.search + "%"} OR email ILIKE ${"%" + input.search + "%"})`);
     if (input.tipo === "Com Lead") conditions.push(sql`tipo_atribuicao = ANY(ARRAY['Lead Anterior','Lead Posterior'])`);
     if (input.tipo === "Sem Atribuicao") conditions.push(sql`tipo_atribuicao = 'Sem Atribuição'`);
@@ -73,6 +75,7 @@ type VendasPageInput = {
   cursos?: string[];
   unidadesGeradoras?: string[];
   utmSrc?: string[];
+  canaisVenda?: string[];
   search?: string | null;
   tipo?: string;
   pageSize: number;
@@ -92,6 +95,7 @@ const getVendasPage = createServerFn({ method: "POST" })
     if (input.cursos?.length) conditions.push(sql`curso IN (${sql.join(input.cursos.map(v => sql`${v}`), sql`, `)})`);
     if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
     if (input.utmSrc?.length) conditions.push(sql`utm_src IN (${sql.join(input.utmSrc.map(v => sql`${v}`), sql`, `)})`);
+    if (input.canaisVenda?.length) conditions.push(sql`canal_venda IN (${sql.join(input.canaisVenda.map(v => sql`${v}`), sql`, `)})`);
     if (input.search) conditions.push(sql`(nome ILIKE ${"%" + input.search + "%"} OR email ILIKE ${"%" + input.search + "%"})`);
     if (input.tipo === "Com Lead") conditions.push(sql`tipo_atribuicao = ANY(ARRAY['Lead Anterior','Lead Posterior'])`);
     if (input.tipo === "Sem Atribuicao") conditions.push(sql`tipo_atribuicao = 'Sem Atribuição'`);
@@ -102,7 +106,10 @@ const getVendasPage = createServerFn({ method: "POST" })
       SELECT nome, email, turma, data_matricula, valor_convertido, estado,
              canal, tipo_atribuicao, tipo_match, match_score, match_lag_days, utm_campanha,
              curso, cidade, unidade_geradora, utm_origem, utm_midia, utm_conteudo, utm_termo,
-             origem_lead, ultima_origem_lead, canal_venda, fase, promocao, pacote, data_criacao
+             origem_lead, ultima_origem_lead, canal_venda, fase, promocao, pacote, data_criacao,
+             telefone, telefone_fixo, nome_venda, modalidade, tipo_origem, lead_origem, unidade,
+             codigo_unidade_realizadora, unidade_geradora_venda, conta, aprovador_venda,
+             quantidade_parcelas, quantidade_pessoas, contato, email_indicador
       FROM vendas_atribuidas
       ${where}
       ORDER BY data_matricula DESC NULLS LAST
@@ -199,6 +206,7 @@ function Vendas() {
           cursos: filters.cursos,
           unidadesGeradoras: filters.unidadesGeradoras,
           utmSrc: filters.utmSrc,
+          canaisVenda: filters.canaisVenda,
           search: debouncedBusca || null,
           tipo: tipoFiltro,
         },
@@ -219,6 +227,7 @@ function Vendas() {
           cursos: filters.cursos,
           unidadesGeradoras: filters.unidadesGeradoras,
           utmSrc: filters.utmSrc,
+          canaisVenda: filters.canaisVenda,
           search: debouncedBusca || null,
           tipo: tipoFiltro,
           pageSize: PAGE_SIZE,
@@ -529,10 +538,25 @@ function Vendas() {
                                 ["UTM Content", r.utm_conteudo],
                                 ["UTM Term", r.utm_termo],
                                 ["Canal Venda", r.canal_venda],
+                                ["Modalidade", r.modalidade],
+                                ["Tipo Origem", r.tipo_origem],
+                                ["Lead Origem", r.lead_origem],
                                 ["Fase", r.fase],
                                 ["Promocao", r.promocao],
                                 ["Pacote", r.pacote],
+                                ["Telefone", r.telefone],
+                                ["Tel. Fixo", r.telefone_fixo],
+                                ["Contato", r.contato],
+                                ["Unidade", r.unidade],
+                                ["Unid. Realizadora", r.codigo_unidade_realizadora],
+                                ["Unid. Geradora Venda", r.unidade_geradora_venda],
                                 ["Unidade Geradora", r.unidade_geradora],
+                                ["Conta", r.conta],
+                                ["Nome Venda", r.nome_venda],
+                                ["Aprovador", r.aprovador_venda],
+                                ["Parcelas", r.quantidade_parcelas],
+                                ["Qtd Pessoas", r.quantidade_pessoas],
+                                ["Email Indicador", r.email_indicador],
                               ] as [string, any][]).map(([label, value]) => (
                                 <div key={label} className="flex flex-col">
                                   <span className="text-[10px] text-muted-foreground">{label}</span>

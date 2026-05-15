@@ -25,6 +25,7 @@ export const Route = createFileRoute("/midia")({
 type FiltersInput = {
   dateFrom?: string | null;
   dateTo?: string | null;
+  canaisVenda?: string[];
 };
 
 type SpendRow = {
@@ -89,6 +90,7 @@ const getVendasMidia = createServerFn({ method: "GET" })
     const conditions: SQL[] = [sql`canal = 'Mídia'`];
     if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
     if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
+    if (input.canaisVenda?.length) conditions.push(sql`canal_venda IN (${sql.join(input.canaisVenda.map(v => sql`${v}`), sql`, `)})`);
     const where = sql`WHERE ${sql.join(conditions, sql` AND `)}`;
 
     const result = await db.execute(sql`
@@ -149,6 +151,7 @@ function Midia() {
   const filtersInput: FiltersInput = {
     dateFrom: filters.dateFrom,
     dateTo: filters.dateTo,
+    canaisVenda: filters.canaisVenda,
   };
 
   const { data: spendData, isLoading: loadingSpend } = useQuery({

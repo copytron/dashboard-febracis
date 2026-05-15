@@ -200,12 +200,14 @@ export const importSheet = createServerFn({ method: "POST" })
           const noId   = chunk.filter((r) => !r.id_venda);
 
           if (withId.length) {
-            // Upsert por id_venda via SQL para preservar semântica de conflito
+            // Upsert por id_venda — atualiza dados se a venda já existe
             for (const r of withId) {
               await db.execute(sql`
                 INSERT INTO rd_vendas (import_id, data)
                 VALUES (${batchId}, ${JSON.stringify(r)}::jsonb)
-                ON CONFLICT DO NOTHING
+                ON CONFLICT ((data->>'id_venda')) DO UPDATE
+                  SET data = EXCLUDED.data,
+                      import_id = EXCLUDED.import_id
               `);
             }
           }

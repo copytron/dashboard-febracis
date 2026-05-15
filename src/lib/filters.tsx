@@ -6,6 +6,7 @@ export type Filters = {
   turmas: string[];
   estados: string[];
   canais: string[];
+  canaisVenda: string[];
   cursos: string[];
   unidadesGeradoras: string[];
   utmSrc: string[];
@@ -23,6 +24,7 @@ const defaultFilters: Filters = {
   turmas: [],
   estados: [],
   canais: [],
+  canaisVenda: [],
   cursos: [],
   unidadesGeradoras: [],
   utmSrc: [],
@@ -60,5 +62,6 @@ export function applyVendasFilters<T extends { gte: any; lte: any; in: any }>(
   if (f.turmas.length) r = r.in("turma", f.turmas);
   if (f.estados.length) r = r.in("estado", f.estados);
   if (f.canais.length) r = r.in("canal", f.canais);
+  if (f.canaisVenda.length) r = r.in("canal_venda", f.canaisVenda);
   return r;
 }

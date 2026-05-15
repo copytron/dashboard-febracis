@@ -17,11 +17,6 @@ export function startCronJobs() {
   cron.schedule("0 0,12 * * *", async () => {
     console.log("[cron] Iniciando sync Windsor.ai...");
     try {
-      const apiKey = process.env.WINDSOR_API_KEY;
-      if (!apiKey) {
-        console.warn("[cron] WINDSOR_API_KEY não configurada, pulando sync");
-        return;
-      }
       const { runWindsorSync } = await import("./windsor.sync.pure");
       const result = await runWindsorSync({ dateFrom: "2020-01-01" });
       console.log("[cron] Sync completo:", JSON.stringify(result));
@@ -34,11 +29,6 @@ export function startCronJobs() {
   cron.schedule("0 3,9,15,21 * * *", async () => {
     console.log("[cron] Iniciando sync Ads (Meta + Google)...");
     try {
-      const apiKey = process.env.WINDSOR_API_KEY;
-      if (!apiKey) {
-        console.warn("[cron] WINDSOR_API_KEY não configurada, pulando sync Ads");
-        return;
-      }
       const { syncMetaAds, syncGoogleAds } = await import("./windsor.ads.sync");
       const today = new Date().toISOString().slice(0, 10);
       const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
