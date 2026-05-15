@@ -7,6 +7,8 @@ export type Filters = {
   estados: string[];
   canais: string[];
   canaisVenda: string[];
+  modalidades: string[];
+  fases: string[];
   cursos: string[];
   unidadesGeradoras: string[];
   utmSrc: string[];
@@ -25,6 +27,8 @@ const defaultFilters: Filters = {
   estados: [],
   canais: [],
   canaisVenda: [],
+  modalidades: [],
+  fases: [],
   cursos: [],
   unidadesGeradoras: [],
   utmSrc: [],
@@ -63,5 +67,7 @@ export function applyVendasFilters<T extends { gte: any; lte: any; in: any }>(
   if (f.estados.length) r = r.in("estado", f.estados);
   if (f.canais.length) r = r.in("canal", f.canais);
   if (f.canaisVenda.length) r = r.in("canal_venda", f.canaisVenda);
+  if (f.modalidades.length) r = r.in("modalidade", f.modalidades);
+  if (f.fases.length) r = r.in("fase", f.fases);
   return r;
 }

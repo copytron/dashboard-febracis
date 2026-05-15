@@ -43,6 +43,8 @@ type FiltersInput = {
   unidadesGeradoras?: string[];
   utmSrc?: string[];
   canaisVenda?: string[];
+  modalidades?: string[];
+  fases?: string[];
 };
 
 type Row = {
@@ -69,6 +71,8 @@ const getUtmsData = createServerFn({ method: "GET" })
     if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
     if (input.utmSrc?.length) conditions.push(sql`utm_src IN (${sql.join(input.utmSrc.map(v => sql`${v}`), sql`, `)})`);
     if (input.canaisVenda?.length) conditions.push(sql`canal_venda IN (${sql.join(input.canaisVenda.map(v => sql`${v}`), sql`, `)})`);
+    if (input.modalidades?.length) conditions.push(sql`modalidade IN (${sql.join(input.modalidades.map(v => sql`${v}`), sql`, `)})`);
+    if (input.fases?.length) conditions.push(sql`fase IN (${sql.join(input.fases.map(v => sql`${v}`), sql`, `)})`);
     const where = conditions.length > 0
       ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
       : sql``;
@@ -98,6 +102,8 @@ function Utms() {
           unidadesGeradoras: filters.unidadesGeradoras,
           utmSrc: filters.utmSrc,
           canaisVenda: filters.canaisVenda,
+          modalidades: filters.modalidades,
+          fases: filters.fases,
         },
       }),
   });

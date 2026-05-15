@@ -26,6 +26,8 @@ type VendasAggInput = {
   unidadesGeradoras?: string[];
   utmSrc?: string[];
   canaisVenda?: string[];
+  modalidades?: string[];
+  fases?: string[];
   search?: string | null;
   tipo?: string;
 };
@@ -44,6 +46,8 @@ const getVendasAgg = createServerFn({ method: "POST" })
     if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
     if (input.utmSrc?.length) conditions.push(sql`utm_src IN (${sql.join(input.utmSrc.map(v => sql`${v}`), sql`, `)})`);
     if (input.canaisVenda?.length) conditions.push(sql`canal_venda IN (${sql.join(input.canaisVenda.map(v => sql`${v}`), sql`, `)})`);
+    if (input.modalidades?.length) conditions.push(sql`modalidade IN (${sql.join(input.modalidades.map(v => sql`${v}`), sql`, `)})`);
+    if (input.fases?.length) conditions.push(sql`fase IN (${sql.join(input.fases.map(v => sql`${v}`), sql`, `)})`);
     if (input.search) conditions.push(sql`(nome ILIKE ${"%" + input.search + "%"} OR email ILIKE ${"%" + input.search + "%"})`);
     if (input.tipo === "Com Lead") conditions.push(sql`tipo_atribuicao = ANY(ARRAY['Lead Anterior','Lead Posterior'])`);
     if (input.tipo === "Sem Atribuicao") conditions.push(sql`tipo_atribuicao = 'Sem Atribuição'`);
@@ -76,6 +80,8 @@ type VendasPageInput = {
   unidadesGeradoras?: string[];
   utmSrc?: string[];
   canaisVenda?: string[];
+  modalidades?: string[];
+  fases?: string[];
   search?: string | null;
   tipo?: string;
   pageSize: number;
@@ -96,6 +102,8 @@ const getVendasPage = createServerFn({ method: "POST" })
     if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
     if (input.utmSrc?.length) conditions.push(sql`utm_src IN (${sql.join(input.utmSrc.map(v => sql`${v}`), sql`, `)})`);
     if (input.canaisVenda?.length) conditions.push(sql`canal_venda IN (${sql.join(input.canaisVenda.map(v => sql`${v}`), sql`, `)})`);
+    if (input.modalidades?.length) conditions.push(sql`modalidade IN (${sql.join(input.modalidades.map(v => sql`${v}`), sql`, `)})`);
+    if (input.fases?.length) conditions.push(sql`fase IN (${sql.join(input.fases.map(v => sql`${v}`), sql`, `)})`);
     if (input.search) conditions.push(sql`(nome ILIKE ${"%" + input.search + "%"} OR email ILIKE ${"%" + input.search + "%"})`);
     if (input.tipo === "Com Lead") conditions.push(sql`tipo_atribuicao = ANY(ARRAY['Lead Anterior','Lead Posterior'])`);
     if (input.tipo === "Sem Atribuicao") conditions.push(sql`tipo_atribuicao = 'Sem Atribuição'`);
@@ -207,6 +215,8 @@ function Vendas() {
           unidadesGeradoras: filters.unidadesGeradoras,
           utmSrc: filters.utmSrc,
           canaisVenda: filters.canaisVenda,
+          modalidades: filters.modalidades,
+          fases: filters.fases,
           search: debouncedBusca || null,
           tipo: tipoFiltro,
         },
@@ -228,6 +238,8 @@ function Vendas() {
           unidadesGeradoras: filters.unidadesGeradoras,
           utmSrc: filters.utmSrc,
           canaisVenda: filters.canaisVenda,
+          modalidades: filters.modalidades,
+          fases: filters.fases,
           search: debouncedBusca || null,
           tipo: tipoFiltro,
           pageSize: PAGE_SIZE,

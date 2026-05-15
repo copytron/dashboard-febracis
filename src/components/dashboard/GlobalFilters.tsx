@@ -13,9 +13,9 @@ import { cn } from "@/lib/utils";
 
 const getFilterOptions = createServerFn({ method: "GET" }).handler(async () => {
   const result = await db.execute(
-    sql`SELECT DISTINCT turma, estado, curso, unidade_geradora, utm_src, canal_venda FROM vendas_atribuidas WHERE turma IS NOT NULL OR estado IS NOT NULL LIMIT 5000`
+    sql`SELECT DISTINCT turma, estado, curso, unidade_geradora, utm_src, canal_venda, modalidade, fase FROM vendas_atribuidas WHERE turma IS NOT NULL OR estado IS NOT NULL LIMIT 5000`
   );
-  return result as unknown as { turma: string | null; estado: string | null; curso: string | null; unidade_geradora: string | null; utm_src: string | null; canal_venda: string | null }[];
+  return result as unknown as { turma: string | null; estado: string | null; curso: string | null; unidade_geradora: string | null; utm_src: string | null; canal_venda: string | null; modalidade: string | null; fase: string | null }[];
 });
 
 function MultiSelect({
@@ -106,6 +106,8 @@ export function GlobalFilters() {
   const [unidadesGeradoras, setUnidadesGeradoras] = useState<string[]>([]);
   const [utmSrcOptions, setUtmSrcOptions] = useState<string[]>([]);
   const [canaisVendaOptions, setCanaisVendaOptions] = useState<string[]>([]);
+  const [modalidadeOptions, setModalidadeOptions] = useState<string[]>([]);
+  const [faseOptions, setFaseOptions] = useState<string[]>([]);
   const canais = [...CANAIS_LIST];
 
   useEffect(() => {
@@ -116,17 +118,21 @@ export function GlobalFilters() {
       const u = Array.from(new Set(data.map((r) => r.unidade_geradora).filter(Boolean))).sort();
       const s = Array.from(new Set(data.map((r) => r.utm_src).filter(Boolean))).sort();
       const cv = Array.from(new Set(data.map((r) => r.canal_venda).filter(Boolean))).sort();
+      const mod = Array.from(new Set(data.map((r) => r.modalidade).filter(Boolean))).sort();
+      const fas = Array.from(new Set(data.map((r) => r.fase).filter(Boolean))).sort();
       setTurmas(t as string[]);
       setEstados(e as string[]);
       setCursos(c as string[]);
       setUnidadesGeradoras(u as string[]);
       setUtmSrcOptions(s as string[]);
       setCanaisVendaOptions(cv as string[]);
+      setModalidadeOptions(mod as string[]);
+      setFaseOptions(fas as string[]);
     });
   }, []);
 
   const hasFilters =
-    filters.dateFrom || filters.dateTo || filters.turmas.length || filters.estados.length || filters.canais.length || filters.canaisVenda.length || filters.cursos.length || filters.unidadesGeradoras.length || filters.utmSrc.length;
+    filters.dateFrom || filters.dateTo || filters.turmas.length || filters.estados.length || filters.canais.length || filters.canaisVenda.length || filters.modalidades.length || filters.fases.length || filters.cursos.length || filters.unidadesGeradoras.length || filters.utmSrc.length;
 
   return (
     <div data-tour="filters" className="flex flex-wrap items-center gap-2 mb-6 p-3 rounded-xl border border-border bg-card/50">
@@ -152,6 +158,18 @@ export function GlobalFilters() {
         options={canaisVendaOptions}
         selected={filters.canaisVenda}
         onChange={(v) => setFilters({ canaisVenda: v })}
+      />
+      <MultiSelect
+        label="Modalidade"
+        options={modalidadeOptions}
+        selected={filters.modalidades}
+        onChange={(v) => setFilters({ modalidades: v })}
+      />
+      <MultiSelect
+        label="Fase"
+        options={faseOptions}
+        selected={filters.fases}
+        onChange={(v) => setFilters({ fases: v })}
       />
       <MultiSelect
         label="Turma"

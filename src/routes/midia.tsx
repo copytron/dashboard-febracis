@@ -26,6 +26,8 @@ type FiltersInput = {
   dateFrom?: string | null;
   dateTo?: string | null;
   canaisVenda?: string[];
+  modalidades?: string[];
+  fases?: string[];
 };
 
 type SpendRow = {
@@ -91,6 +93,8 @@ const getVendasMidia = createServerFn({ method: "GET" })
     if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
     if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
     if (input.canaisVenda?.length) conditions.push(sql`canal_venda IN (${sql.join(input.canaisVenda.map(v => sql`${v}`), sql`, `)})`);
+    if (input.modalidades?.length) conditions.push(sql`modalidade IN (${sql.join(input.modalidades.map(v => sql`${v}`), sql`, `)})`);
+    if (input.fases?.length) conditions.push(sql`fase IN (${sql.join(input.fases.map(v => sql`${v}`), sql`, `)})`);
     const where = sql`WHERE ${sql.join(conditions, sql` AND `)}`;
 
     const result = await db.execute(sql`
@@ -152,6 +156,8 @@ function Midia() {
     dateFrom: filters.dateFrom,
     dateTo: filters.dateTo,
     canaisVenda: filters.canaisVenda,
+    modalidades: filters.modalidades,
+    fases: filters.fases,
   };
 
   const { data: spendData, isLoading: loadingSpend } = useQuery({

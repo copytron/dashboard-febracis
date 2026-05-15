@@ -310,7 +310,27 @@ export async function runWindsorSync(input: { dateFrom: string; dateTo?: string 
     throw new Error(`Erro ao sincronizar leads: ${err?.message ?? err}`);
   }
 
-  // ── 3. Atualizar lookup de unidades geradoras ──────────────────────────────
+  // ── 3. Auto-popular turma_lookup para SF IDs sem mapeamento ────────────────
+  try {
+    await db.execute(sql`
+      INSERT INTO turma_lookup (sf_id, codigo_turma, codigo_curso)
+      SELECT DISTINCT
+        data->>'turma' AS sf_id,
+        data->>'turma' AS codigo_turma,
+        COALESCE(data->>'codigo_curso', data->>'curso') AS codigo_curso
+      FROM rd_vendas
+      WHERE data->>'turma' IS NOT NULL
+        AND data->>'turma' <> ''
+        AND NOT EXISTS (
+          SELECT 1 FROM turma_lookup tl WHERE tl.sf_id = data->>'turma'
+        )
+      ON CONFLICT (sf_id) DO NOTHING
+    `);
+  } catch (_err) {
+    // Non-critical — don't block sync
+  }
+
+  // ── 4. Atualizar lookup de unidades geradoras ──────────────────────────────
   try {
     await db.execute(sql`
       INSERT INTO unidade_geradora_lookup (codigo, sf_id, updated_at)
