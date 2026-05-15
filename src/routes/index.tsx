@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 import { db } from "@/db/client";
@@ -49,37 +48,109 @@ type FiltersInput = {
   fases?: string[];
 };
 
-type Row = {
-  canal: string;
-  tipo_atribuicao: string;
-  valor_convertido: number;
-  receita_convertida_brl: number;
-  data_matricula: string | null;
-  estado: string | null;
+// ─── Helpers ────────────────────────────────────────────────────────────────────
+
+function buildConditions(input: FiltersInput): SQL[] {
+  const conditions: SQL[] = [];
+  if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
+  if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
+  if (input.turmas?.length) conditions.push(sql`turma IN (${sql.join(input.turmas.map(v => sql`${v}`), sql`, `)})`);
+  if (input.estados?.length) conditions.push(sql`estado IN (${sql.join(input.estados.map(v => sql`${v}`), sql`, `)})`);
+  if (input.canais?.length) conditions.push(sql`canal IN (${sql.join(input.canais.map(v => sql`${v}`), sql`, `)})`);
+  if (input.cursos?.length) conditions.push(sql`curso IN (${sql.join(input.cursos.map(v => sql`${v}`), sql`, `)})`);
+  if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
+  if (input.utmSrc?.length) conditions.push(sql`utm_src IN (${sql.join(input.utmSrc.map(v => sql`${v}`), sql`, `)})`);
+  if (input.canaisVenda?.length) conditions.push(sql`canal_venda IN (${sql.join(input.canaisVenda.map(v => sql`${v}`), sql`, `)})`);
+  if (input.modalidades?.length) conditions.push(sql`modalidade IN (${sql.join(input.modalidades.map(v => sql`${v}`), sql`, `)})`);
+  if (input.fases?.length) conditions.push(sql`fase IN (${sql.join(input.fases.map(v => sql`${v}`), sql`, `)})`);
+  return conditions;
+}
+
+function buildWhere(conditions: SQL[]): SQL {
+  return conditions.length > 0 ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``;
+}
+
+// ─── Server Functions ───────────────────────────────────────────────────────────
+
+type OverviewData = {
+  kpis: { total_vendas: number; receita_total: number; receita_convertida: number; identificadas: number };
+  byCanal: { canal: string; vendas: number; receita: number }[];
+  byTipo: { tipo: string; vendas: number; receita: number }[];
+  trend: { mes: string; receita: number }[];
 };
 
 const getOverviewData = createServerFn({ method: "GET" })
   .inputValidator((input: FiltersInput) => input)
-  .handler(async ({ data: input }) => {
-    const conditions: SQL[] = [];
-    if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
-    if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
-    if (input.turmas?.length) conditions.push(sql`turma IN (${sql.join(input.turmas.map(v => sql`${v}`), sql`, `)})`);
-    if (input.estados?.length) conditions.push(sql`estado IN (${sql.join(input.estados.map(v => sql`${v}`), sql`, `)})`);
-    if (input.canais?.length) conditions.push(sql`canal IN (${sql.join(input.canais.map(v => sql`${v}`), sql`, `)})`);
-    if (input.cursos?.length) conditions.push(sql`curso IN (${sql.join(input.cursos.map(v => sql`${v}`), sql`, `)})`);
-    if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
-    if (input.utmSrc?.length) conditions.push(sql`utm_src IN (${sql.join(input.utmSrc.map(v => sql`${v}`), sql`, `)})`);
-    if (input.canaisVenda?.length) conditions.push(sql`canal_venda IN (${sql.join(input.canaisVenda.map(v => sql`${v}`), sql`, `)})`);
-    if (input.modalidades?.length) conditions.push(sql`modalidade IN (${sql.join(input.modalidades.map(v => sql`${v}`), sql`, `)})`);
-    if (input.fases?.length) conditions.push(sql`fase IN (${sql.join(input.fases.map(v => sql`${v}`), sql`, `)})`);
-    const where = conditions.length > 0
-      ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
-      : sql``;
-    const result = await db.execute(
-      sql`SELECT canal, tipo_atribuicao, valor_convertido, receita_convertida_brl, data_matricula, estado FROM vendas_atribuidas ${where} LIMIT 10000`
-    );
-    return result as unknown as Row[];
+  .handler(async ({ data: input }): Promise<OverviewData> => {
+    const where = buildWhere(buildConditions(input));
+
+    // Todas as queries em paralelo
+    const [kpisResult, canalResult, tipoResult, trendResult] = await Promise.all([
+      // KPIs agregados
+      db.execute(sql`
+        SELECT
+          COUNT(*)::int AS total_vendas,
+          COALESCE(SUM(valor_convertido), 0)::numeric AS receita_total,
+          COALESCE(SUM(receita_convertida_brl), 0)::numeric AS receita_convertida,
+          COUNT(*) FILTER (WHERE tipo_atribuicao IN ('Lead Anterior', 'Lead Posterior', 'UTM Direta'))::int AS identificadas
+        FROM vendas_atribuidas ${where}
+      `),
+      // Breakdown por canal
+      db.execute(sql`
+        SELECT
+          COALESCE(canal, 'Outros') AS canal,
+          COUNT(*)::int AS vendas,
+          COALESCE(SUM(receita_convertida_brl), 0)::numeric AS receita
+        FROM vendas_atribuidas ${where}
+        GROUP BY canal ORDER BY receita DESC
+      `),
+      // Breakdown por tipo de atribuição
+      db.execute(sql`
+        SELECT
+          COALESCE(tipo_atribuicao, 'Sem Atribuição') AS tipo,
+          COUNT(*)::int AS vendas,
+          COALESCE(SUM(receita_convertida_brl), 0)::numeric AS receita
+        FROM vendas_atribuidas ${where}
+        GROUP BY tipo_atribuicao
+      `),
+      // Tendência mensal
+      (() => {
+        const trendConditions = [...buildConditions(input), sql`data_matricula IS NOT NULL`];
+        const trendWhere = buildWhere(trendConditions);
+        return db.execute(sql`
+          SELECT
+            TO_CHAR(data_matricula, 'YYYY-MM') AS mes,
+            COALESCE(SUM(receita_convertida_brl), 0)::numeric AS receita
+          FROM vendas_atribuidas ${trendWhere}
+          GROUP BY TO_CHAR(data_matricula, 'YYYY-MM')
+          ORDER BY mes
+        `);
+      })(),
+    ]);
+
+    const kpi = (kpisResult as any[])[0] ?? {};
+    return {
+      kpis: {
+        total_vendas: Number(kpi.total_vendas ?? 0),
+        receita_total: Number(kpi.receita_total ?? 0),
+        receita_convertida: Number(kpi.receita_convertida ?? 0),
+        identificadas: Number(kpi.identificadas ?? 0),
+      },
+      byCanal: (canalResult as any[]).map(r => ({
+        canal: r.canal,
+        vendas: Number(r.vendas),
+        receita: Number(r.receita),
+      })),
+      byTipo: (tipoResult as any[]).map(r => ({
+        tipo: r.tipo,
+        vendas: Number(r.vendas),
+        receita: Number(r.receita),
+      })),
+      trend: (trendResult as any[]).map(r => ({
+        mes: r.mes,
+        receita: Number(r.receita),
+      })),
+    };
   });
 
 function Overview() {
@@ -105,49 +176,32 @@ function Overview() {
       }),
   });
 
-  const rows = data ?? [];
+  const { kpis, byCanal, byTipo, trend } = data ?? {
+    kpis: { total_vendas: 0, receita_total: 0, receita_convertida: 0, identificadas: 0 },
+    byCanal: [],
+    byTipo: [],
+    trend: [],
+  };
 
-  // Aggregations — vendas_atribuidas is the complete set (sem_atribuicao is a subset, not additive)
-  const totalVendas = rows.length;
-  const receitaTotal = rows.reduce((s, r) => s + Number(r.valor_convertido ?? 0), 0);
-  const receitaConvertida = rows.reduce((s, r) => s + Number(r.receita_convertida_brl ?? 0), 0);
-  const ticket = totalVendas > 0 ? receitaTotal / totalVendas : 0;
-
-  const tipoMap: Record<string, { vendas: number; receita: number }> = {};
-  const canalMap: Record<string, { vendas: number; receita: number; tipo: string }> = {};
-  for (const r of rows) {
-    const t = r.tipo_atribuicao || "Sem Atribuição";
-    tipoMap[t] = tipoMap[t] || { vendas: 0, receita: 0 };
-    tipoMap[t].vendas += 1;
-    tipoMap[t].receita += Number(r.valor_convertido ?? 0);
-
-    const c = r.canal || "Outros";
-    canalMap[c] = canalMap[c] || { vendas: 0, receita: 0, tipo: t };
-    canalMap[c].vendas += 1;
-    canalMap[c].receita += Number(r.valor_convertido ?? 0);
-  }
-
-  const identificadas =
-    (tipoMap["Lead Anterior"]?.vendas ?? 0) +
-    (tipoMap["Lead Posterior"]?.vendas ?? 0) +
-    (tipoMap["UTM Direta"]?.vendas ?? 0);
+  const totalVendas = kpis.total_vendas;
+  const receitaTotal = kpis.receita_total;
+  const receitaConvertida = kpis.receita_convertida;
+  const identificadas = kpis.identificadas;
   const pctIdent = totalVendas > 0 ? (identificadas / totalVendas) * 100 : 0;
 
-  const canalRows = Object.entries(canalMap)
-    .map(([canal, v]) => ({
-      canal,
-      vendas: v.vendas,
-      receita: v.receita,
-      ticket: v.vendas > 0 ? v.receita / v.vendas : 0,
-      pct: receitaTotal > 0 ? (v.receita / receitaTotal) * 100 : 0,
-      tipo: v.tipo,
-    }))
-    .sort((a, b) => b.receita - a.receita);
+  const receitaTotalCanais = byCanal.reduce((s, c) => s + c.receita, 0);
+  const canalRows = byCanal.map((c) => ({
+    canal: c.canal,
+    vendas: c.vendas,
+    receita: c.receita,
+    ticket: c.vendas > 0 ? c.receita / c.vendas : 0,
+    pct: receitaTotalCanais > 0 ? (c.receita / receitaTotalCanais) * 100 : 0,
+  }));
 
-  const tipoRows = Object.entries(tipoMap).map(([tipo, v]) => ({
-    name: tipo,
-    value: v.vendas,
-    receita: v.receita,
+  const tipoRows = byTipo.map((t) => ({
+    name: t.tipo,
+    value: t.vendas,
+    receita: t.receita,
   }));
 
   const tipoColors: Record<string, string> = {
@@ -157,15 +211,7 @@ function Overview() {
     "Sem Atribuição": "#f87171",
   };
 
-  const monthlyTrend = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const r of rows) {
-      if (!r.data_matricula) continue;
-      const mes = String(r.data_matricula).slice(0, 7);
-      m[mes] = (m[mes] ?? 0) + Number(r.valor_convertido ?? 0);
-    }
-    return Object.entries(m).sort().map(([mes, receita]) => ({ mes, receita }));
-  }, [rows]);
+  const monthlyTrend = trend;
 
 
   return (

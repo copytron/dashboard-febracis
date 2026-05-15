@@ -39,10 +39,10 @@ type FiltersInput = {
 type Row = {
   turma: string;
   canal: string;
-  tipo_atribuicao: string;
-  valor_convertido: number;
-  estado: string;
+  estado: string | null;
   utm_campanha: string | null;
+  vendas: number;
+  receita: number;
 };
 
 const getTurmasData = createServerFn({ method: "GET" })
@@ -60,11 +60,10 @@ const getTurmasData = createServerFn({ method: "GET" })
     if (input.canaisVenda?.length) conditions.push(sql`canal_venda IN (${sql.join(input.canaisVenda.map(v => sql`${v}`), sql`, `)})`);
     if (input.modalidades?.length) conditions.push(sql`modalidade IN (${sql.join(input.modalidades.map(v => sql`${v}`), sql`, `)})`);
     if (input.fases?.length) conditions.push(sql`fase IN (${sql.join(input.fases.map(v => sql`${v}`), sql`, `)})`);
-    const where = conditions.length > 0
-      ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
-      : sql``;
+    conditions.push(sql`turma IS NOT NULL`);
+    const where = sql`WHERE ${sql.join(conditions, sql` AND `)}`;
     const result = await db.execute(
-      sql`SELECT turma, canal, tipo_atribuicao, valor_convertido, estado, utm_campanha FROM vendas_atribuidas ${where} LIMIT 10000`
+      sql`SELECT turma, canal, estado, utm_campanha, COUNT(*)::int AS vendas, COALESCE(SUM(receita_convertida_brl), 0)::numeric AS receita FROM vendas_atribuidas ${where} GROUP BY turma, canal, estado, utm_campanha`
     );
     return result as unknown as Row[];
   });
@@ -115,9 +114,9 @@ function Turmas() {
     for (const r of rows) {
       const k = r.turma || "(sem turma)";
       m[k] = m[k] || { vendas: 0, receita: 0, canalCount: {} };
-      m[k].vendas += 1;
-      m[k].receita += Number(r.valor_convertido ?? 0);
-      m[k].canalCount[r.canal] = (m[k].canalCount[r.canal] ?? 0) + 1;
+      m[k].vendas += r.vendas;
+      m[k].receita += Number(r.receita);
+      m[k].canalCount[r.canal] = (m[k].canalCount[r.canal] ?? 0) + r.vendas;
     }
     return Object.entries(m)
       .map(([turma, v]) => {
@@ -143,21 +142,22 @@ function Turmas() {
     if (!openTurma) return null;
     const sub = rows.filter((r) => r.turma === openTurma);
     const canalMap: Record<string, number> = {};
-    const tipoMap: Record<string, number> = {};
     const campMap: Record<string, number> = {};
     const estadoMap: Record<string, number> = {};
+    let totalVendas = 0;
+    let totalReceita = 0;
     for (const r of sub) {
-      canalMap[r.canal] = (canalMap[r.canal] ?? 0) + Number(r.valor_convertido ?? 0);
-      tipoMap[r.tipo_atribuicao] = (tipoMap[r.tipo_atribuicao] ?? 0) + 1;
-      if (r.utm_campanha) campMap[r.utm_campanha] = (campMap[r.utm_campanha] ?? 0) + Number(r.valor_convertido ?? 0);
-      if (r.estado) estadoMap[r.estado] = (estadoMap[r.estado] ?? 0) + 1;
+      totalVendas += r.vendas;
+      totalReceita += Number(r.receita);
+      canalMap[r.canal] = (canalMap[r.canal] ?? 0) + Number(r.receita);
+      if (r.utm_campanha) campMap[r.utm_campanha] = (campMap[r.utm_campanha] ?? 0) + Number(r.receita);
+      if (r.estado) estadoMap[r.estado] = (estadoMap[r.estado] ?? 0) + r.vendas;
     }
-    const total = sub.length || 1;
     return {
-      total: sub.length,
-      receita: sub.reduce((s, r) => s + Number(r.valor_convertido ?? 0), 0),
+      total: totalVendas,
+      receita: totalReceita,
       canais: Object.entries(canalMap).map(([k, v]) => ({ canal: k, receita: v })).sort((a, b) => b.receita - a.receita),
-      tipos: Object.entries(tipoMap).map(([k, v]) => ({ tipo: k, vendas: v, pct: (v / total) * 100 })),
+      tipos: [],
       campanhas: Object.entries(campMap).map(([k, v]) => ({ key: k, receita: v })).sort((a, b) => b.receita - a.receita).slice(0, 5),
       estados: Object.entries(estadoMap).map(([k, v]) => ({ estado: k, vendas: v })).sort((a, b) => b.vendas - a.vendas),
     };

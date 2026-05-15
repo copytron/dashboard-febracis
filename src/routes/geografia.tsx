@@ -40,7 +40,8 @@ type Row = {
   estado: string | null;
   cidade: string | null;
   canal: string;
-  valor_convertido: number;
+  vendas: number;
+  receita: number;
 };
 
 const getGeografiaData = createServerFn({ method: "GET" })
@@ -63,7 +64,7 @@ const getGeografiaData = createServerFn({ method: "GET" })
       ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
       : sql``;
     const result = await db.execute(
-      sql`SELECT estado, cidade, canal, valor_convertido FROM vendas_atribuidas ${where} LIMIT 10000`
+      sql`SELECT estado, cidade, canal, COUNT(*)::int AS vendas, COALESCE(SUM(receita_convertida_brl), 0)::numeric AS receita FROM vendas_atribuidas ${where} GROUP BY estado, cidade, canal`
     );
     return result as unknown as Row[];
   });
@@ -96,7 +97,7 @@ function Geografia() {
   });
 
   const rows = data ?? [];
-  const receitaTotal = rows.reduce((s, r) => s + Number(r.valor_convertido ?? 0), 0) || 1;
+  const receitaTotal = rows.reduce((s, r) => s + Number(r.receita ?? 0), 0) || 1;
 
   function toggleSort(key: "receita" | "vendas" | "ticket") {
     if (sortKey === key) setSortDir((d) => (d === "desc" ? "asc" : "desc"));
@@ -108,9 +109,9 @@ function Geografia() {
     for (const r of rows) {
       const k = r.estado || "(sem estado)";
       m[k] = m[k] || { vendas: 0, receita: 0, canalCount: {} };
-      m[k].vendas += 1;
-      m[k].receita += Number(r.valor_convertido ?? 0);
-      m[k].canalCount[r.canal] = (m[k].canalCount[r.canal] ?? 0) + 1;
+      m[k].vendas += r.vendas;
+      m[k].receita += Number(r.receita ?? 0);
+      m[k].canalCount[r.canal] = (m[k].canalCount[r.canal] ?? 0) + r.vendas;
     }
     return Object.entries(m)
       .map(([estado, v]) => {
@@ -134,7 +135,7 @@ function Geografia() {
     const m: Record<string, number> = {};
     for (const r of rows) {
       if (!r.cidade) continue;
-      m[r.cidade] = (m[r.cidade] ?? 0) + Number(r.valor_convertido ?? 0);
+      m[r.cidade] = (m[r.cidade] ?? 0) + Number(r.receita ?? 0);
     }
     return Object.entries(m)
       .map(([cidade, receita]) => ({ cidade, receita }))
@@ -150,7 +151,7 @@ function Geografia() {
       const can = r.canal || "Outro";
       canaisSet.add(can);
       m[est] = m[est] || {};
-      m[est][can] = (m[est][can] ?? 0) + Number(r.valor_convertido ?? 0);
+      m[est][can] = (m[est][can] ?? 0) + Number(r.receita ?? 0);
     }
     const canais = Array.from(canaisSet).sort();
     return {

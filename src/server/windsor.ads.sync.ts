@@ -163,7 +163,7 @@ export async function syncGoogleAds(dateFrom: string, dateTo: string) {
   let skipped = 0;
 
   for (const row of rows) {
-    const spend = Number(row.spend ?? row.cost ?? 0);
+    const spend = Number(row.cost ?? row.spend ?? 0);
     if (!row.date || spend === 0) { skipped++; continue; }
 
     await db.execute(sql`

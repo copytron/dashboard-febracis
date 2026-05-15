@@ -49,7 +49,8 @@ type FiltersInput = {
 
 type Row = {
   canal: string;
-  valor_convertido: number;
+  vendas: number;
+  receita: number;
   utm_campanha: string | null;
   utm_conteudo: string | null;
   utm_origem: string | null;
@@ -77,7 +78,7 @@ const getUtmsData = createServerFn({ method: "GET" })
       ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
       : sql``;
     const result = await db.execute(
-      sql`SELECT canal, valor_convertido, utm_campanha, utm_conteudo, utm_origem, utm_midia, utm_termo, utm_src FROM vendas_atribuidas ${where} LIMIT 10000`
+      sql`SELECT canal, utm_campanha, utm_conteudo, utm_origem, utm_midia, utm_termo, utm_src, COUNT(*)::int AS vendas, COALESCE(SUM(receita_convertida_brl), 0)::numeric AS receita FROM vendas_atribuidas ${where} GROUP BY canal, utm_campanha, utm_conteudo, utm_origem, utm_midia, utm_termo, utm_src`
     );
     return result as unknown as Row[];
   });
@@ -109,7 +110,7 @@ function Utms() {
   });
 
   const rows = data ?? [];
-  const receitaTotal = rows.reduce((s, r) => s + Number(r.valor_convertido ?? 0), 0) || 1;
+  const receitaTotal = rows.reduce((s, r) => s + Number(r.receita ?? 0), 0) || 1;
 
   function toggleSort(key: "receita" | "vendas" | "ticket") {
     if (sortKey === key) setSortDir((d) => (d === "desc" ? "asc" : "desc"));
@@ -122,9 +123,9 @@ function Utms() {
       const val = r[activeTab];
       if (!val) continue;
       m[val] = m[val] || { canal: r.canal, vendas: 0, receita: 0, canalCount: {} };
-      m[val].vendas += 1;
-      m[val].receita += Number(r.valor_convertido ?? 0);
-      m[val].canalCount[r.canal] = (m[val].canalCount[r.canal] ?? 0) + 1;
+      m[val].vendas += r.vendas;
+      m[val].receita += Number(r.receita ?? 0);
+      m[val].canalCount[r.canal] = (m[val].canalCount[r.canal] ?? 0) + r.vendas;
     }
     return Object.entries(m)
       .map(([key, v]) => {
@@ -244,7 +245,7 @@ function Utms() {
             </tbody>
           </table>
         </div>
-        <div className="mt-3 text-xs text-muted-foreground">{fmtNum(tableRows.length)} valores únicos · {fmtNum(rows.filter((r) => r[activeTab]).length)} vendas com este UTM preenchido</div>
+        <div className="mt-3 text-xs text-muted-foreground">{fmtNum(tableRows.length)} valores únicos · {fmtNum(rows.filter((r) => r[activeTab]).reduce((s, r) => s + r.vendas, 0))} vendas com este UTM preenchido</div>
       </Card>
     </>
   );

@@ -57,7 +57,7 @@ const getVendasAgg = createServerFn({ method: "POST" })
     const result = await db.execute(sql`
       SELECT
         COUNT(*)::int AS total_count,
-        COALESCE(SUM(valor_convertido), 0)::numeric AS receita_sum,
+        COALESCE(SUM(receita_convertida_brl), 0)::numeric AS receita_sum,
         COUNT(*) FILTER (WHERE tipo_atribuicao IN ('Lead Anterior','Lead Posterior'))::int AS com_lead_count
       FROM vendas_atribuidas
       ${where}

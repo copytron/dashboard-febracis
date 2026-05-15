@@ -18,7 +18,8 @@ export function startCronJobs() {
     console.log("[cron] Iniciando sync Windsor.ai...");
     try {
       const { runWindsorSync } = await import("./windsor.sync.pure");
-      const result = await runWindsorSync({ dateFrom: "2020-01-01" });
+      const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+      const result = await runWindsorSync({ dateFrom: ninetyDaysAgo });
       console.log("[cron] Sync completo:", JSON.stringify(result));
     } catch (err) {
       console.error("[cron] Sync Windsor falhou:", err);

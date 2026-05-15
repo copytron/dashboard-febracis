@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 
 const getFilterOptions = createServerFn({ method: "GET" }).handler(async () => {
   const result = await db.execute(
-    sql`SELECT DISTINCT turma, estado, curso, unidade_geradora, utm_src, canal_venda, modalidade, fase FROM vendas_atribuidas WHERE turma IS NOT NULL OR estado IS NOT NULL LIMIT 5000`
+    sql`SELECT DISTINCT turma, estado, curso, unidade_geradora, utm_src, canal_venda, modalidade, fase FROM vendas_atribuidas LIMIT 5000`
   );
   return result as unknown as { turma: string | null; estado: string | null; curso: string | null; unidade_geradora: string | null; utm_src: string | null; canal_venda: string | null; modalidade: string | null; fase: string | null }[];
 });

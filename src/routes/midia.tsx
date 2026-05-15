@@ -25,6 +25,12 @@ export const Route = createFileRoute("/midia")({
 type FiltersInput = {
   dateFrom?: string | null;
   dateTo?: string | null;
+  turmas?: string[];
+  estados?: string[];
+  canais?: string[];
+  cursos?: string[];
+  unidadesGeradoras?: string[];
+  utmSrc?: string[];
   canaisVenda?: string[];
   modalidades?: string[];
   fases?: string[];
@@ -92,6 +98,12 @@ const getVendasMidia = createServerFn({ method: "GET" })
     const conditions: SQL[] = [sql`canal = 'Mídia'`];
     if (input.dateFrom) conditions.push(sql`data_matricula >= ${input.dateFrom}`);
     if (input.dateTo) conditions.push(sql`data_matricula <= ${input.dateTo}`);
+    if (input.turmas?.length) conditions.push(sql`turma IN (${sql.join(input.turmas.map(v => sql`${v}`), sql`, `)})`);
+    if (input.estados?.length) conditions.push(sql`estado IN (${sql.join(input.estados.map(v => sql`${v}`), sql`, `)})`);
+    if (input.canais?.length) conditions.push(sql`canal IN (${sql.join(input.canais.map(v => sql`${v}`), sql`, `)})`);
+    if (input.cursos?.length) conditions.push(sql`curso IN (${sql.join(input.cursos.map(v => sql`${v}`), sql`, `)})`);
+    if (input.unidadesGeradoras?.length) conditions.push(sql`unidade_geradora IN (${sql.join(input.unidadesGeradoras.map(v => sql`${v}`), sql`, `)})`);
+    if (input.utmSrc?.length) conditions.push(sql`utm_src IN (${sql.join(input.utmSrc.map(v => sql`${v}`), sql`, `)})`);
     if (input.canaisVenda?.length) conditions.push(sql`canal_venda IN (${sql.join(input.canaisVenda.map(v => sql`${v}`), sql`, `)})`);
     if (input.modalidades?.length) conditions.push(sql`modalidade IN (${sql.join(input.modalidades.map(v => sql`${v}`), sql`, `)})`);
     if (input.fases?.length) conditions.push(sql`fase IN (${sql.join(input.fases.map(v => sql`${v}`), sql`, `)})`);
@@ -100,7 +112,7 @@ const getVendasMidia = createServerFn({ method: "GET" })
     const result = await db.execute(sql`
       SELECT
         COUNT(*)::int AS total_vendas,
-        COALESCE(SUM(valor_convertido), 0)::numeric AS total_receita
+        COALESCE(SUM(receita_convertida_brl), 0)::numeric AS total_receita
       FROM vendas_atribuidas
       ${where}
     `);
@@ -155,6 +167,12 @@ function Midia() {
   const filtersInput: FiltersInput = {
     dateFrom: filters.dateFrom,
     dateTo: filters.dateTo,
+    turmas: filters.turmas,
+    estados: filters.estados,
+    canais: filters.canais,
+    cursos: filters.cursos,
+    unidadesGeradoras: filters.unidadesGeradoras,
+    utmSrc: filters.utmSrc,
     canaisVenda: filters.canaisVenda,
     modalidades: filters.modalidades,
     fases: filters.fases,

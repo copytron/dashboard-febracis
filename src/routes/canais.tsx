@@ -50,7 +50,7 @@ type LeadsCountRow = {
 
 type DetailRow = {
   canal: string;
-  valor_convertido: number;
+  receita_convertida_brl: number;
   utm_campanha: string | null;
   utm_conteudo: string | null;
   utm_origem: string | null;
@@ -82,8 +82,8 @@ const getCanaisBreakdown = createServerFn({ method: "GET" })
         SELECT
           canal,
           COUNT(*)::int AS vendas,
-          SUM(valor_convertido) AS receita,
-          CASE WHEN COUNT(*) > 0 THEN SUM(valor_convertido) / COUNT(*) ELSE 0 END AS ticket
+          SUM(receita_convertida_brl) AS receita,
+          CASE WHEN COUNT(*) > 0 THEN SUM(receita_convertida_brl) / COUNT(*) ELSE 0 END AS ticket
         FROM vendas_atribuidas
         ${where}
         GROUP BY canal
@@ -167,7 +167,7 @@ const getCanaisDetail = createServerFn({ method: "GET" })
       ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
       : sql``;
     const result = await db.execute(
-      sql`SELECT canal, valor_convertido, utm_campanha, utm_conteudo, utm_origem, utm_midia, utm_termo, data_matricula FROM vendas_atribuidas ${where} LIMIT 10000`
+      sql`SELECT canal, receita_convertida_brl, utm_campanha, utm_conteudo, utm_origem, utm_midia, utm_termo, data_matricula FROM vendas_atribuidas ${where} LIMIT 10000`
     );
     return result as unknown as DetailRow[];
   });
@@ -261,7 +261,7 @@ function Canais() {
       if (!k) continue; // excluir valores vazios
       m[k] = m[k] || { vendas: 0, receita: 0 };
       m[k].vendas += 1;
-      m[k].receita += Number(r.valor_convertido ?? 0);
+      m[k].receita += Number(r.receita_convertida_brl ?? 0);
     }
     return Object.entries(m)
       .map(([k, v]) => ({ key: k, vendas: v.vendas, receita: v.receita, ticket: v.vendas > 0 ? v.receita / v.vendas : 0 }))
@@ -302,7 +302,7 @@ function Canais() {
   for (const r of data) {
     if (!r.data_matricula) continue;
     const m = String(r.data_matricula).slice(0, 7);
-    monthly[m] = (monthly[m] ?? 0) + Number(r.valor_convertido ?? 0);
+    monthly[m] = (monthly[m] ?? 0) + Number(r.receita_convertida_brl ?? 0);
   }
   const trend = Object.entries(monthly).sort().map(([m, v]) => ({ mes: m, receita: v }));
 

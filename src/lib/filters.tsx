@@ -54,20 +54,3 @@ export function useFilters() {
   if (!ctx) throw new Error("useFilters must be used within FiltersProvider");
   return ctx;
 }
-
-/** Apply filters to a vendas_atribuidas query builder */
-export function applyVendasFilters<T extends { gte: any; lte: any; in: any }>(
-  q: T,
-  f: Filters,
-): T {
-  let r: any = q;
-  if (f.dateFrom) r = r.gte("data_matricula", f.dateFrom);
-  if (f.dateTo) r = r.lte("data_matricula", f.dateTo);
-  if (f.turmas.length) r = r.in("turma", f.turmas);
-  if (f.estados.length) r = r.in("estado", f.estados);
-  if (f.canais.length) r = r.in("canal", f.canais);
-  if (f.canaisVenda.length) r = r.in("canal_venda", f.canaisVenda);
-  if (f.modalidades.length) r = r.in("modalidade", f.modalidades);
-  if (f.fases.length) r = r.in("fase", f.fases);
-  return r;
-}
